@@ -300,12 +300,29 @@ def api_email_seen(email_id):
 
 @app.route("/api/emails/mark-all-read", methods=["POST"])
 def api_mark_all_read():
+    """批量标为已读。
+
+    不传 `folder` = 该账号下**所有**文件夹（含垃圾邮件）；
+    传 `folder`   = 只标那一个。
+
+    「全部已读」按钮走的是前者。原因：左侧账号角标统计的是该账号**所有文件夹**
+    的未读合计，按钮若只标当前文件夹，角标就不会归零，看着像没生效。
+    """
     payload = request.json or {}
     account = payload.get("account")
-    folder = payload.get("folder")
+    folder = (payload.get("folder") or "").strip() or None
     account_id = int(account) if str(account or "").isdigit() else None
-    db.mark_all_seen(account_id, folder)
-    return jsonify({"ok": True, "stats": db.get_stats()})
+
+    changed = db.mark_all_seen(account_id, folder)
+    if changed:
+        threading.Thread(target=_push_seen_bulk, args=(changed, True),
+                         daemon=True).start()
+
+    by_folder = {}
+    for _aid, f, _uid in changed:
+        by_folder[f] = by_folder.get(f, 0) + 1
+    return jsonify({"ok": True, "cleared": len(changed),
+                    "by_folder": by_folder, "stats": db.get_stats()})
 
 
 @app.route("/api/attachments/<int:attachment_id>")
@@ -346,6 +363,38 @@ def _push_seen_to_server(row, seen):
                 pass
     except Exception:
         pass
+
+
+def _push_seen_bulk(rows, seen=True):
+    """把一批已读状态回推服务器。
+
+    按「账号 + 文件夹」分组，每组只开**一次**连接、用一条 UID STORE 发一批 UID ——
+    逐封回推的话，几十封就是几十次 TCP 握手加登录，又慢又容易被服务商限流。
+    """
+    groups = {}
+    for account_id, folder, uid in rows:
+        groups.setdefault((account_id, folder), []).append(str(uid))
+
+    for (account_id, folder), uids in groups.items():
+        try:
+            acc = db.get_account(account_id)
+            if not acc:
+                continue
+            name = (db.get_folders(account_id) or {}).get(folder) or folder
+            conn = connect(acc)
+            try:
+                conn.select(quote_mailbox(name), readonly=False)
+                # UID STORE 接受逗号分隔的序列，一次别塞太多
+                for i in range(0, len(uids), 500):
+                    conn.uid("store", ",".join(uids[i:i + 500]),
+                             "+FLAGS" if seen else "-FLAGS", "(\\Seen)")
+            finally:
+                try:
+                    conn.logout()
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
 
 def _append_to_sent(acc, raw):

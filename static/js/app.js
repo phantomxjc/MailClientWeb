@@ -308,8 +308,12 @@ function renderFolders() {
   const counts = countFor(S.account);
   $('folderList').innerHTML = S.folders.map((f) => {
     const c = counts[f.key] || { total: 0, unread: 0 };
-    const num = c.unread ? `${c.unread} / ${c.total}` : (c.total || '');
-    return `<div class="folder-item ${S.folder === f.key ? 'active' : ''}" data-folder="${f.key}">
+    // 未读用蓝色角标、总数用灰色小字，分开显示。
+    // 原来拼成一个 "5 / 5"，看不出哪个是未读、哪个是总数。
+    const num = (c.unread ? `<em class="unread">${c.unread}</em>` : '')
+              + (!c.unread && c.total ? `<span class="total">${c.total}</span>` : '');
+    return `<div class="folder-item ${S.folder === f.key ? 'active' : ''}" data-folder="${f.key}"
+      title="${f.label}：未读 ${c.unread} 封 / 共 ${c.total} 封">
       <span class="ico">${FOLDER_ICON[f.key] || '•'}</span><span>${f.label}</span>
       <span class="num">${num}</span></div>`;
   }).join('');
@@ -484,10 +488,13 @@ async function bootstrap2Refresh() {
 $('btnSync').onclick = syncNow;
 $('btnRefresh').onclick = () => loadList();
 $('btnMarkRead').onclick = async () => {
-  const payload = { folder: S.folder };
+  // 不传 folder：清的是「当前账号下所有文件夹」（含垃圾邮件）。
+  // 左侧账号角标统计的就是各文件夹未读的合计 —— 只标当前文件夹的话，
+  // 角标不会归零，看着就像按钮没生效。
+  const payload = {};
   if (S.account !== 'all') payload.account = parseInt(S.account, 10);
-  await api('/api/emails/mark-all-read', { method: 'POST', body: JSON.stringify(payload) });
-  toast('已全部标为已读');
+  const r = await api('/api/emails/mark-all-read', { method: 'POST', body: JSON.stringify(payload) });
+  toast(r.cleared ? `已标为已读：${r.cleared} 封` : '没有未读邮件');
   refreshCounts();
   loadList();
 };

@@ -413,19 +413,30 @@ def mark_seen(email_id, seen=1):
 
 
 def mark_all_seen(account_id=None, folder=None):
+    """把符合条件的**未读**邮件标为已读。
+
+    返回被改动的 `[(account_id, folder, uid), ...]`，调用方拿它回推 IMAP 服务器 ——
+    只改本地的话服务器上仍是未读，手机或网页版看到的还是未读，两边会一直对不上。
+
+    `folder` 传 None 表示该账号下**所有**文件夹（含垃圾邮件）；
+    传具体值则只动那一个文件夹。
+    """
     conn = get_conn()
-    where, params = [], []
+    where, params = ["seen=0"], []
     if account_id:
         where.append("account_id=?")
         params.append(account_id)
     if folder:
         where.append("folder=?")
         params.append(folder)
-    sql = "UPDATE emails SET seen=1"
-    if where:
-        sql += " WHERE " + " AND ".join(where)
-    conn.execute(sql, params)
-    conn.commit()
+    clause = " WHERE " + " AND ".join(where)
+
+    rows = conn.execute("SELECT account_id, folder, uid FROM emails" + clause,
+                        params).fetchall()
+    if rows:
+        conn.execute("UPDATE emails SET seen=1" + clause, params)
+        conn.commit()
+    return [(r["account_id"], r["folder"], r["uid"]) for r in rows]
 
 
 def get_stats():

@@ -125,8 +125,13 @@ input, select, textarea { font-family: inherit; font-size: 14px; }
 .folder-item:hover { background: rgba(255, 255, 255, .75); }
 .folder-item.active { background: #fff; color: var(--brand); font-weight: 600; box-shadow: var(--shadow); }
 .folder-item .ico { width: 18px; text-align: center; font-size: 14px; }
-.folder-item .num { margin-left: auto; font-size: 11px; color: var(--faint); }
-.folder-item.active .num { color: var(--brand); }
+.folder-item .num { margin-left: auto; font-size: 11px; color: var(--faint);
+  display: flex; align-items: center; gap: 6px; }
+/* 未读：蓝色胶囊；总数：灰色小字。两者外形不同才不会被误读成 "5 / 5" */
+.folder-item .num em { font-style: normal; min-width: 18px; height: 18px; padding: 0 5px;
+  border-radius: 9px; background: var(--brand); color: #fff;
+  font-size: 10.5px; font-weight: 700; display: grid; place-items: center; }
+.folder-item.active .num .total { color: var(--brand); }
 
 .nav-foot { margin-top: auto; padding-top: 14px; }
 
