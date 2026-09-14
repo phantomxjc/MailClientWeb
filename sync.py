@@ -12,6 +12,7 @@ import threading
 import time
 
 import db
+import notifier
 from mail_conn import (CANON_KEYS, CANON_LABEL, MailAuthError, connect,
                        resolve_folders)
 from parser import fetch_folder
@@ -110,6 +111,8 @@ class SyncManager:
                 self._push("暂无账号，请先添加邮箱账号")
                 return
 
+            # 本轮新到的邮件，攒到最后统一提醒（逐封还是合并由设置决定）
+            pending = []
             for acc in accounts:
                 self._push(f"正在同步 {acc['email']} …")
                 conn, err = self._connect_with_retry(acc)
@@ -142,8 +145,12 @@ class SyncManager:
                             continue
                         self._push(f"{acc['email']} · 同步{CANON_LABEL[key]} …")
                         try:
-                            total += fetch_folder(acc["id"], conn, key, name,
-                                                  LIMITS.get(key, 50))
+                            got, fresh = fetch_folder(acc["id"], conn, key, name,
+                                                      LIMITS.get(key, 50))
+                            total += got
+                            for it in fresh:
+                                it["account"] = acc["email"]
+                            pending.extend(fresh)
                         except Exception as e:
                             self._push(f"{acc['email']} · {CANON_LABEL[key]} 同步失败：{e}")
                     with self._lock:
@@ -162,6 +169,7 @@ class SyncManager:
                         pass
 
             self._push("全部同步完成")
+            self._notify(pending)
         except Exception as e:                                  # 兜底，别让线程静默死掉
             self._push(f"同步线程异常：{e}")
         finally:
@@ -169,6 +177,22 @@ class SyncManager:
                 self._state["running"] = False
                 self._state["stage"] = "done"
                 self._state["finished_at"] = time.time()
+
+    def _notify(self, pending):
+        """把本轮新邮件交给提醒模块。提醒出任何问题都不能影响同步本身。"""
+        try:
+            if not pending:
+                return
+            cfg = notifier.get_settings()
+            if not cfg.get("notify_spam"):
+                pending = [p for p in pending if p.get("folder") != "Spam"]
+            if not pending:
+                return
+            sent = notifier.notify_new_mails(pending)
+            if sent:
+                self._push(f"已推送 {sent} 条新邮件提醒")
+        except Exception as e:
+            self._push(f"提醒推送失败：{e}")
 
 
 sync_manager = SyncManager()

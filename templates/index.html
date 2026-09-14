@@ -33,6 +33,13 @@
           <div class="name" id="userName">{{ username or '未登录' }}</div>
           <div class="addr" id="userRole">管理员</div>
         </div>
+        <button class="ub-btn" id="btnNotify" title="新邮件提醒" aria-label="新邮件提醒">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/>
+            <path d="M13.7 21a2 2 0 0 1-3.4 0"/>
+          </svg>
+        </button>
         <button class="ub-btn" id="btnPwd" title="修改密码" aria-label="修改密码">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -233,6 +240,78 @@
     <div class="foot">
       <button class="btn ghost" id="pwdCancel">取消</button>
       <button class="btn" id="pwdSave">保存新密码</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ 弹窗：新邮件提醒 ══════════ -->
+<div class="mask" id="notifyMask">
+  <div class="modal" style="max-width:520px;">
+    <h3>新邮件提醒</h3>
+    <div class="body">
+      <div class="msg err" id="notifyMsg" style="display:none;"></div>
+
+      <label class="chk">
+        <input type="checkbox" id="nfEnabled">
+        <span>启用新邮件提醒
+          <span class="sub">同步时发现收件箱有新未读邮件，就推送到下面选定的服务。</span>
+        </span>
+      </label>
+
+      <div class="field">
+        <label>推送通道</label>
+        <select id="nfChannel"></select>
+      </div>
+      <div class="chan-note" id="nfNote"></div>
+      <div id="nfFields"></div>
+
+      <div class="sec-title">通知内容</div>
+
+      <div class="field">
+        <label>邮件访问地址（选填）</label>
+        <input id="nfBaseUrl" placeholder="http://192.168.1.10:8090">
+        <div class="hint">填了之后通知里会带「查看邮件」链接。前提是手机能访问到这个地址（内网、VPN 或公网域名都行），否则链接点不开——通知本身不受影响。</div>
+      </div>
+
+      <label class="chk">
+        <input type="checkbox" id="nfMerge">
+        <span>合并推送
+          <span class="sub">一轮同步里的多封邮件合成一条。不勾选就是一封一条——注意 Server 酱免费版每天只有 5 条额度。</span>
+        </span>
+      </label>
+
+      <details class="adv">
+        <summary>更多选项</summary>
+        <div class="inner">
+      <label class="chk">
+        <input type="checkbox" id="nfSpam">
+        <span>垃圾邮件也提醒</span>
+      </label>
+
+      <div class="field">
+        <label>最小推送间隔（分钟，0 = 不限制）</label>
+        <input id="nfInterval" type="number" min="0" max="1440" value="0">
+        <div class="hint">设成 15 就是「一刻钟内最多推一次」，防止邮件多的时候被刷屏。</div>
+      </div>
+
+      <div class="grid2">
+        <div class="field">
+          <label>免打扰开始</label>
+          <input id="nfQuietStart" placeholder="22:00">
+        </div>
+        <div class="field">
+          <label>免打扰结束</label>
+          <input id="nfQuietEnd" placeholder="08:00">
+        </div>
+      </div>
+      <div class="hint" style="margin:-8px 0 4px 0;">两个都填才生效。时段内的新邮件不推送也不补推。</div>
+        </div>
+      </details>
+    </div>
+    <div class="foot">
+      <button class="btn ghost" id="notifyCancel">取消</button>
+      <button class="btn ghost" id="notifyTest">发送测试</button>
+      <button class="btn" id="notifySave">保存</button>
     </div>
   </div>
 </div>

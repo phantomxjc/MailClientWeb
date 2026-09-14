@@ -18,6 +18,7 @@ build/
 .venv/
 venv/
 MailClient*.spec
+_shot*
 start.bat
 .DS_Store
 README.md

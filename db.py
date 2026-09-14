@@ -311,6 +311,30 @@ def save_email(account_id, folder, uid, msg_from, msg_to, subject, date,
     return row[0] if row else cur.lastrowid
 
 
+def existing_uids(account_id, folder):
+    """该账号该文件夹本地已有的 uid 集合。
+
+    同步前取一次，就能判断哪些是这次真正「新到」的邮件 —— 比逐封 SELECT 省事，
+    也比拿 uid 比大小可靠（uid 在有的服务商上并非严格递增）。
+    """
+    rows = get_conn().execute(
+        "SELECT uid FROM emails WHERE account_id=? AND folder=?",
+        (account_id, folder)).fetchall()
+    return {int(r["uid"]) for r in rows if r["uid"] is not None}
+
+
+def get_meta(key, default=None):
+    """meta 表的单值读取（存通知设置、一次性迁移标记这类零散数据）。"""
+    row = get_conn().execute("SELECT value FROM meta WHERE key=?", (key,)).fetchone()
+    return row["value"] if row else default
+
+
+def set_meta(key, value):
+    conn = get_conn()
+    conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?,?)", (key, value))
+    conn.commit()
+
+
 def clear_attachments(email_id):
     """重新同步前清掉旧附件，避免同一封邮件反复同步后附件重复堆积。"""
     conn = get_conn()

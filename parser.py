@@ -11,9 +11,29 @@
 import email
 import re
 from email.header import decode_header
+from email.utils import parsedate_to_datetime
 
-from db import clear_attachments, save_attachment, save_email
+from db import clear_attachments, existing_uids, save_attachment, save_email
 from mail_conn import quote_mailbox
+
+# 只有这两个文件夹的新邮件值得提醒：别人发进来的。
+# Sent / Drafts 是自己写的，Trash 是不要的。
+NOTIFY_FOLDERS = ("INBOX", "Spam")
+
+
+def _fmt_time(date_header):
+    """把 Date 头转成通知里好读的本地时间。"""
+    if not date_header:
+        return ""
+    try:
+        dt = parsedate_to_datetime(date_header)
+        if dt is None:
+            return ""
+        if dt.tzinfo is None:
+            return dt.strftime("%Y-%m-%d %H:%M")
+        return dt.astimezone().strftime("%Y-%m-%d %H:%M")
+    except Exception:
+        return str(date_header)[:40]
 
 
 def decode_mime(s):
@@ -90,10 +110,16 @@ _FLAGS_RE = re.compile(r"FLAGS \(([^)]*)\)", re.IGNORECASE)
 
 
 def fetch_folder(account_id, conn, canonical, imap_name, limit=120):
-    """在已登录的连接上拉取一个文件夹，返回成功入库的邮件数。
+    """在已登录的连接上拉取一个文件夹，返回 (入库邮件数, 新增未读列表)。
 
     canonical 是入库用的统一 key（INBOX/Sent/Drafts/Trash/Spam），
     imap_name 是服务器上的真实文件夹名。
+
+    「新增」的判定方式：拉取前先取一次本地已有的 uid 集合，循环里不在集合内的
+    就是这次新到的。两个坑要绕开：
+      1. 不能拿 uid 大小当新旧 —— 有的服务商 uid 并不严格递增；
+      2. 首次同步整批都是新的（本地空库），但那不是「刚收到」，所以整批不提醒，
+         否则第一次添加账号就会甩出上百条通知。
     """
     typ, data = conn.select(quote_mailbox(imap_name), readonly=True)
     if typ != "OK":
@@ -108,9 +134,12 @@ def fetch_folder(account_id, conn, canonical, imap_name, limit=120):
     typ, data = conn.uid("search", None, "ALL")
     if typ != "OK" or not data or not data[0]:
         conn.select("INBOX", readonly=True)
-        return 0
+        return 0, []
 
     uids = data[0].split()[-int(limit):]
+    known = existing_uids(account_id, canonical)
+    first_sync = not known
+    new_items = []
     count = 0
     for uid in uids:
         try:
@@ -143,6 +172,16 @@ def fetch_folder(account_id, conn, canonical, imap_name, limit=120):
                 clear_attachments(email_id)
                 for fname, ctype, payload in info["attachments"]:
                     save_attachment(email_id, fname, ctype, payload)
+
+            if (canonical in NOTIFY_FOLDERS and not first_sync
+                    and not seen and int(uid) not in known):
+                new_items.append({
+                    "subject": info["subject"],
+                    "from": info["from_addr"],
+                    "time": _fmt_time(info["date"]),
+                    "folder": canonical,
+                    "email_id": email_id,
+                })
             count += 1
         except Exception:
             # 单封邮件解析失败不该拖垮整个文件夹的同步
@@ -152,4 +191,4 @@ def fetch_folder(account_id, conn, canonical, imap_name, limit=120):
         conn.select("INBOX", readonly=True)
     except Exception:
         pass
-    return count
+    return count, new_items

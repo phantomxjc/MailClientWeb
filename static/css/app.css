@@ -311,6 +311,21 @@ iframe.body { width: 100%; border: 0; display: block; height: 70vh; min-height: 
 .field .hint { font-size: 11.5px; color: var(--faint); line-height: 1.7; margin-top: 6px; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
+/* ══════════ 新邮件提醒弹窗 ══════════ */
+.chk { display: flex; align-items: flex-start; gap: 9px; margin-bottom: 14px; font-size: 13px; color: #334155; cursor: pointer; }
+.chk input[type="checkbox"] { width: 15px; height: 15px; margin: 1px 0 0 0; flex: none; accent-color: var(--brand); cursor: pointer; }
+.chk .sub { display: block; font-size: 11.5px; font-weight: 400; color: var(--faint); line-height: 1.7; margin-top: 3px; }
+.chan-note { font-size: 11.5px; color: var(--muted); line-height: 1.75; background: #f6f8fc; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 14px; }
+.chan-note a { color: var(--brand); text-decoration: none; }
+.chan-note a:hover { text-decoration: underline; }
+.sec-title { font-size: 12px; font-weight: 600; color: var(--muted); margin: 20px 0 12px 0; padding-top: 16px; border-top: 1px solid var(--line); }
+.adv { border-top: 1px solid var(--line); margin-top: 18px; padding-top: 14px; }
+.adv > summary { cursor: pointer; font-size: 12px; font-weight: 600; color: var(--muted); list-style: none; }
+.adv > summary::-webkit-details-marker { display: none; }
+.adv > summary::before { content: '▸ '; }
+.adv[open] > summary::before { content: '▾ '; }
+.adv .inner { padding-top: 14px; }
+
 .btn {
   border: 0; border-radius: 10px; padding: 10px 18px; font-size: 13px; font-weight: 600;
   background: linear-gradient(135deg, var(--brand), var(--brand2)); color: #fff;

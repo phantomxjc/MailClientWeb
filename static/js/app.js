@@ -184,6 +184,127 @@ $('pwdSave').onclick = async () => {
   }
 };
 
+/* ---------------------------------------------------------------- 新邮件提醒 */
+/* 各通道的输入框由后端 /api/notify 返回的字段定义渲染，加通道不用改这里。 */
+let NF = { channels: {}, settings: null };
+
+function openNotifyModal() {
+  $('notifyMsg').style.display = 'none';
+  $('notifyMask').classList.add('show');
+  api('/api/notify').then((data) => {
+    NF.channels = data.channels || {};
+    NF.settings = data.settings || {};
+    const s = NF.settings;
+    const sel = $('nfChannel');
+    sel.innerHTML = Object.entries(NF.channels)
+      .map(([k, v]) => `<option value="${esc(k)}">${esc(v.label)}</option>`).join('');
+    sel.value = NF.channels[s.channel] ? s.channel : 'serverchan';
+    $('nfEnabled').checked = !!s.enabled;
+    $('nfMerge').checked = !!s.merge;
+    $('nfSpam').checked = !!s.notify_spam;
+    $('nfBaseUrl').value = s.base_url || '';
+    $('nfInterval').value = s.min_interval || 0;
+    $('nfQuietStart').value = s.quiet_start || '';
+    $('nfQuietEnd').value = s.quiet_end || '';
+    renderNotifyFields(sel.value);
+  }).catch((e) => notifyMsg(e.message));
+}
+
+function closeNotifyModal() { $('notifyMask').classList.remove('show'); }
+
+function notifyMsg(text, ok) {
+  const el = $('notifyMsg');
+  el.className = 'msg ' + (ok ? 'ok' : 'err');
+  el.textContent = text;
+  el.style.display = '';
+}
+
+function nfFieldsOf(ch) {
+  return ((NF.channels[ch] || {}).fields) || [];
+}
+
+function renderNotifyFields(ch) {
+  const def = NF.channels[ch] || {};
+  const link = def.register
+    ? ` <a href="${esc(def.register)}" target="_blank" rel="noopener">怎么获取 →</a>` : '';
+  $('nfNote').innerHTML = (def.note ? esc(def.note) : '') + link;
+
+  const configured = NF.settings && NF.settings.configured;
+  $('nfFields').innerHTML = nfFieldsOf(ch).map((f) => {
+    if (f.options && f.options.length) {
+      return `<div class="field"><label>${esc(f.label)}</label>
+        <select id="nf-${esc(f.key)}">${f.options.map((o) => `<option value="${esc(o)}">${esc(o)}</option>`).join('')}</select></div>`;
+    }
+    // 已存过的密钥不回显明文，用占位提示「留空则不修改」
+    const ph = (configured && configured[ch]) ? '已保存，留空则不修改' : (f.placeholder || '');
+    return `<div class="field"><label>${esc(f.label)}</label>
+      <input id="nf-${esc(f.key)}" placeholder="${esc(ph)}" autocomplete="off"></div>`;
+  }).join('');
+
+  nfFieldsOf(ch).forEach((f) => {
+    const el = $('nf-' + f.key);
+    if (el && f.default && el.tagName === 'SELECT') el.value = f.default;
+  });
+}
+
+function notifyPayload() {
+  const ch = $('nfChannel').value;
+  const config = {};
+  config[ch] = {};
+  nfFieldsOf(ch).forEach((f) => {
+    const el = $('nf-' + f.key);
+    if (el) config[ch][f.key] = el.value;
+  });
+  return {
+    enabled: $('nfEnabled').checked,
+    channel: ch,
+    config,
+    base_url: $('nfBaseUrl').value.trim(),
+    merge: $('nfMerge').checked,
+    notify_spam: $('nfSpam').checked,
+    min_interval: parseInt($('nfInterval').value, 10) || 0,
+    quiet_start: $('nfQuietStart').value.trim(),
+    quiet_end: $('nfQuietEnd').value.trim(),
+  };
+}
+
+$('btnNotify').onclick = openNotifyModal;
+$('notifyCancel').onclick = closeNotifyModal;
+$('nfChannel').onchange = () => renderNotifyFields($('nfChannel').value);
+$('notifyMask').addEventListener('click', (e) => { if (e.target === $('notifyMask')) closeNotifyModal(); });
+
+$('notifyTest').onclick = async () => {
+  const btn = $('notifyTest');
+  btn.disabled = true; btn.textContent = '发送中…';
+  try {
+    const r = await api('/api/notify/test', { method: 'POST', body: JSON.stringify(notifyPayload()) });
+    notifyMsg('测试已发出 · ' + (r.message || '成功'), true);
+  } catch (e) {
+    notifyMsg(e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '发送测试';
+  }
+};
+
+$('notifySave').onclick = async () => {
+  const btn = $('notifySave');
+  const enabled = $('nfEnabled').checked;
+  btn.disabled = true; btn.textContent = '保存中…';
+  try {
+    const r = await api('/api/notify', { method: 'POST', body: JSON.stringify(notifyPayload()) });
+    NF.settings = r.settings || NF.settings;
+    closeNotifyModal();
+    toast(enabled ? '提醒已开启' : '提醒设置已保存（未启用）');
+  } catch (e) {
+    notifyMsg(e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '保存';
+  }
+};
+
+// 调试/分享用：#notify 深链直接打开提醒设置
+if ((location.hash || '') === '#notify') openNotifyModal();
+
 /* ---------------------------------------------------------------- 左栏 */
 function countFor(accountId) {
   const zero = {};

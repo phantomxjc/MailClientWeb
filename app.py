@@ -21,6 +21,7 @@ import accounts
 import auth
 import db
 import msauth
+import notifier
 import oauth
 from config import (APP_VERSION, AUTH_DISABLED, DATA_DIR, DOMAIN_PROVIDER,
                     PROVIDERS, SYNC_INTERVAL_MINUTES, provider_of)
@@ -180,6 +181,26 @@ def api_change_password():
     if not ok:
         return jsonify({"error": message}), 400
     return jsonify({"ok": True})
+
+
+# ---------------------------------------------------------------- 新邮件提醒
+@app.route("/api/notify")
+def api_notify_get():
+    """返回当前设置 + 通道清单。通道表单由后端字段定义驱动，加通道不用改前端。"""
+    return jsonify({"settings": notifier.get_settings(),
+                    "channels": notifier.CHANNELS})
+
+
+@app.route("/api/notify", methods=["POST"])
+def api_notify_save():
+    return jsonify({"ok": True, "settings": notifier.save_settings(request.json or {})})
+
+
+@app.route("/api/notify/test", methods=["POST"])
+def api_notify_test():
+    """用界面上当前填的值试发一条（不要求先保存）。"""
+    ok, message = notifier.send_test(request.json or {})
+    return jsonify({"ok": ok, "message": message}), (200 if ok else 400)
 
 
 @app.route("/")

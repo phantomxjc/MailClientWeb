@@ -31,8 +31,8 @@ DIST = PROJECT / "dist"
 # 进包的源码白名单 —— 显式列出来，避免哪天手滑把 data/ 打进去
 FILES = [
     "app.py", "auth.py", "accounts.py", "config.py", "db.py",
-    "mail_conn.py", "msauth.py", "oauth.py", "parser.py", "sender.py",
-    "sync.py", "requirements.txt", "Dockerfile", ".dockerignore",
+    "mail_conn.py", "msauth.py", "notifier.py", "oauth.py", "parser.py",
+    "sender.py", "sync.py", "requirements.txt", "Dockerfile", ".dockerignore",
 ]
 DIRS = ["templates", "static"]
 

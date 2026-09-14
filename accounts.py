@@ -33,14 +33,12 @@ def _cipher():
     return _fernet
 
 
-def save_password(email, password):
-    if password is None:
-        return
-    db.save_credential(email, _cipher().encrypt(password.encode("utf-8")).decode("ascii"))
+def encrypt_text(text):
+    """通用加密，给邮箱密码之外的东西复用（比如推送服务的 Key）。"""
+    return _cipher().encrypt(text.encode("utf-8")).decode("ascii")
 
 
-def get_password(email):
-    token = db.get_credential(email)
+def decrypt_text(token):
     if not token:
         return None
     try:
@@ -48,6 +46,16 @@ def get_password(email):
     except (InvalidToken, ValueError):
         # 密钥换过（比如 /data 被重建）→ 当作没存，让用户重新填
         return None
+
+
+def save_password(email, password):
+    if password is None:
+        return
+    db.save_credential(email, encrypt_text(password))
+
+
+def get_password(email):
+    return decrypt_text(db.get_credential(email))
 
 
 def delete_password(email):
