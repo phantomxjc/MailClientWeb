@@ -119,8 +119,19 @@ docker compose logs -f          # 看日志
 
 ### 飞牛 NAS：应用中心一键安装（.fpk，推荐）
 
-安装包在 `dist/mailclientweb.fpk`（约 **44 MB**，体积主要是包内自带的离线基础镜像，
+**安装包在 Releases 页面下载**（约 **44 MB**，体积主要是包内自带的离线基础镜像，
 原因见下面「为什么包里要带一个 44 MB 的镜像」），装好后和飞牛自带应用一样出现在桌面。
+
+- 所有版本：<https://github.com/phantomxjc/MailClientWeb/releases>
+- 永远下最新版（版本号变了链接也不用改）：
+
+  ```
+  https://github.com/phantomxjc/MailClientWeb/releases/latest/download/mailclientweb.fpk
+  ```
+
+自己从源码打包也可以（产物落在 `dist/mailclientweb.fpk`），见下面「自己重新打包 .fpk」。
+FPK 是 44 MB 二进制，**不进 git 仓库**——提交进去会永久留在历史里，之后想删都删不干净，
+所以它只作为 Release 附件分发。
 
 1. 把 `mailclientweb.fpk` 传到 NAS 上任意目录（比如 `/vol1/1000/`）
 2. 打开 **应用中心 → 右上角「设置」→ 手动安装应用**，选中这个文件

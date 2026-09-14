@@ -33,3 +33,8 @@ services:
       AUTH_PASSWORD: "${AUTH_PASSWORD:-}"
     volumes:
       - "/var/apps/mailclientweb/shares/mailclientweb/data:/data"
+    labels:
+      # 作者信息（docker inspect mailclientweb 可见）
+      org.opencontainers.image.authors: "软件推手（phantomxjc）"
+      org.opencontainers.image.source: "https://github.com/phantomxjc/MailClientWeb"
+      org.opencontainers.image.description: "多邮箱统一收件箱。后续更新详情请关注微信公众号「软件推手」"

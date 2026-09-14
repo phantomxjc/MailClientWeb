@@ -163,6 +163,19 @@ input, select, textarea { font-family: inherit; font-size: 14px; }
 }
 .btn-mini:hover { border-color: var(--brand); color: var(--brand); }
 
+/* 作者信息 */
+.author-box {
+  margin-top: 10px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(47, 107, 255, .07), rgba(0, 194, 255, .07));
+  border: 1px solid #dbe6fb;
+  line-height: 1.6;
+}
+.author-box .ab-name { font-size: 11.5px; font-weight: 600; color: #45619c; }
+.author-box .ab-id { font-family: Consolas, Monaco, monospace; font-weight: 500; color: var(--brand); }
+.author-box .ab-sub { margin-top: 2px; font-size: 11px; color: var(--faint); }
+
 /* ══════════ 中栏 ══════════ */
 .list {
   background: #fff; border-right: 1px solid var(--line);

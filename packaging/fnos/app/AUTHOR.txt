@@ -1,0 +1,13 @@
+MailClient 邮箱（Web 版）· 飞牛 fnOS 安装包
+════════════════════════════════════════════
+
+作者        ：软件推手 / phantomxjc
+项目主页    ：https://github.com/phantomxjc/MailClientWeb
+容器镜像    ：ghcr.io/phantomxjc/mailclientweb
+
+后续更新详情请关注微信公众号「软件推手」
+
+────────────────────────────────────────────
+默认登录    ：admin / admin123（首次登录后请到界面左下角「修改密码」）
+数据目录    ：/var/apps/mailclientweb/shares/mailclientweb/data（删掉等于重置）
+════════════════════════════════════════════

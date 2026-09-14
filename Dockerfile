@@ -39,6 +39,13 @@ RUN mkdir -p /data
 # RUN useradd -m -u 1000 mailuser && chown -R mailuser:mailuser /app /data
 # USER mailuser
 
+# 镜像元数据：记上作者与出处，`docker inspect` 就能反查到项目
+LABEL org.opencontainers.image.title="MailClient Web" \
+      org.opencontainers.image.description="多邮箱统一收件箱（Web 版）。后续更新详情请关注微信公众号「软件推手」" \
+      org.opencontainers.image.authors="软件推手（phantomxjc）" \
+      org.opencontainers.image.url="https://github.com/phantomxjc/MailClientWeb" \
+      org.opencontainers.image.source="https://github.com/phantomxjc/MailClientWeb"
+
 EXPOSE 8090
 VOLUME ["/data"]
 

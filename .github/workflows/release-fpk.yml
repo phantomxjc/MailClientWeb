@@ -1,0 +1,149 @@
+name: 构建并发布 FPK 安装包
+
+# 什么时候跑：
+#   · 打 v* 标签（如 v2.0.0）→ 构建 FPK，自动挂到同名 Release 上供人下载
+#   · 也可以在 Actions 页面手动点「Run workflow」→ 只构建并把产物存成 artifact，不发 Release
+#
+# 为什么不用提交进仓库：FPK 是 44MB 二进制，进 git 会永久留在历史里且删不掉。
+# Release 附件才是它该待的地方。
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+env:
+  # 产物名（会变成 dist/<APP_NAME>.fpk）
+  APP_NAME: mailclientweb
+  # 飞牛官方打包工具的版本号，与 packaging/fnos/fnpack.exe 保持一致
+  FNPACK_VER: "1.2.3"
+
+# 同一个标签重复推时，取消上一次没跑完的
+concurrency:
+  group: release-fpk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-fpk:
+    runs-on: ubuntu-latest
+
+    # 创建 Release、上传附件需要 contents:write
+    permissions:
+      contents: write
+
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # ── 飞牛官方没有提供 pip 包，只能下二进制 ──
+      #    官方下载页：https://developer.fnnas.com/docs/cli/fnpack/
+      - name: 安装 fnpack（Linux 版）
+        run: |
+          set -e
+          curl -fsSL -o /usr/local/bin/fnpack \
+            "https://static2.fnnas.com/fnpack/fnpack-${FNPACK_VER}-linux-amd64"
+          chmod +x /usr/local/bin/fnpack
+          echo "fnpack 就位：$(command -v fnpack)  $(stat -c%s /usr/local/bin/fnpack) 字节"
+
+      # ── 离线基础镜像 python:3.12-slim ──
+      #    fetch-base-image.py 那套是给「国内本机」写的，走 docker.1panel.live 等加速站；
+      #    GitHub 的机器在国外，直连 Docker Hub 更快更稳，所以这里改用 docker save 造，
+      #    产物格式完全一致（都是 docker save 的 tar.gz）。
+      #    打包脚本发现 base-image.tar.gz 已存在就会跳过下载，但**仍会对它做完整自检**，
+      #    所以这里不设 SKIP_BASE_IMAGE，让校验照跑。
+      - name: 准备离线基础镜像
+        run: |
+          set -e
+          docker pull python:3.12-slim
+          mkdir -p packaging/fnos/app/docker
+          docker save python:3.12-slim | gzip -6 > packaging/fnos/app/docker/base-image.tar.gz
+          ls -lh packaging/fnos/app/docker/base-image.tar.gz
+
+      - name: 打包 FPK
+        env:
+          # find_fnpack 的查找顺序是「环境变量 → 包内自带 → PATH」，
+          # 仓库里没有 fnpack.exe（被 .gitignore 挡了），所以必须显式指定
+          FNPACK_BIN: /usr/local/bin/fnpack
+        run: python packaging/fnos/build-fpk.py
+
+      - name: 校验产物并生成校验和
+        run: |
+          set -e
+          ls -lh dist/
+          python packaging/fnos/fetch-base-image.py --verify
+          sha256sum dist/*.fpk > dist/SHA256SUMS.txt
+          cat dist/SHA256SUMS.txt
+
+      # ── 打标签时：建成 Release，把 FPK 作为附件挂上去 ──
+      - name: 发布 Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: MailClient Web ${{ github.ref_name }}
+          body: |
+            ## 下载
+
+            | 文件 | 说明 |
+            |---|---|
+            | `mailclientweb.fpk` | 飞牛 fnOS 安装包（x86_64，约 44 MB，含离线基础镜像） |
+            | `SHA256SUMS.txt` | 校验和，下载后可自行核对 |
+
+            想下载最新版，用这个固定链接（版本号变了也不用改）：
+
+            ```
+            https://github.com/${{ github.repository }}/releases/latest/download/mailclientweb.fpk
+            ```
+
+            ## 安装
+
+            **飞牛 fnOS（推荐）**：把 `.fpk` 传到 NAS 任意目录 →
+            应用中心右上角「设置」→ 手动安装应用 → 选中文件 → 走向导填写初始密码与同步间隔。
+
+            **Docker**：
+
+            ```bash
+            docker run -d --name mailclient --restart unless-stopped \
+              -p 8090:8090 -v ./data:/data \
+              ghcr.io/${{ github.repository_owner }}/mailclientweb:latest
+            ```
+
+            **Flask 直接跑**：
+
+            ```bash
+            pip install -r requirements.txt && python app.py
+            ```
+
+            数据（数据库、加密密钥、微软令牌）都存在挂载出来的 `data` 目录里，
+            **覆盖安装和升级都不会丢，卸载也保留**。
+
+            ---
+
+            > 作者：软件推手 / phantomxjc
+            > 后续更新详情请关注微信公众号「软件推手」
+          generate_release_notes: true
+          files: |
+            dist/${{ env.APP_NAME }}.fpk
+            dist/SHA256SUMS.txt
+
+      # ── 手动触发时：不发 Release，只把产物留档 30 天 ──
+      - name: 上传构建产物（手动触发时）
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APP_NAME }}-fpk
+          path: dist/
+          retention-days: 30
+
+      - name: 汇总
+        run: |
+          {
+            echo "### FPK 已构建完成 🎉"
+            echo ""
+            echo '```'
+            ls -lh dist/
+            echo '```'
+          } >> $GITHUB_STEP_SUMMARY

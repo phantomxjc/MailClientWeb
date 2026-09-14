@@ -1,0 +1,27 @@
+# MailClient Web —— 直接拉 GitHub 上自动构建好的镜像（不需要本地 build）
+#
+#   镜像：ghcr.io/phantomxjc/mailclientweb:latest
+#   用法：docker compose -f docker-compose.ghcr.yml up -d
+#
+# 国内网络拉不动的话，把下面 image 一行换成镜像站前缀即可（内容完全一样）：
+#   ghcr.nju.edu.cn/phantomxjc/mailclientweb:latest       （实测可用）
+#   ghcr.m.daocloud.io/phantomxjc/mailclientweb:latest
+#
+# 想换端口：同目录建 .env 写 APP_PORT=9080
+services:
+  mailclient:
+    image: ghcr.io/phantomxjc/mailclientweb:latest
+    container_name: mailclient
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-8090}:8090"
+    environment:
+      TZ: Asia/Shanghai
+      DATA_DIR: /data
+      # 留空则首次启动自动建管理员 admin / admin123，登录后可在界面改密码
+      AUTH_PASSWORD: "${AUTH_PASSWORD:-}"
+      # 自动同步间隔（分钟），设 0 关闭
+      SYNC_INTERVAL_MINUTES: "${SYNC_INTERVAL_MINUTES:-10}"
+    volumes:
+      # 数据库、微软令牌、加密密钥都在这里，删了等于重置
+      - ./data:/data

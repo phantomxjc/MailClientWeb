@@ -32,6 +32,9 @@ compose_cmd () {
 }
 
 log "===== install_callback 开始 ====="
+log "作者：软件推手（phantomxjc）"
+log "后续更新详情请关注微信公众号「软件推手」"
+log "项目地址：https://github.com/phantomxjc/MailClientWeb"
 
 # 把安装向导里填写的值落成 .env（与 compose 同目录）。
 # 这样即使环境变量没被直接传进 compose，变量替换也能读到，避免「向导填了密码却没生效」。

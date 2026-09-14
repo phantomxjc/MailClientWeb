@@ -2,7 +2,7 @@
     ".url": {
         "mailclientweb.Application": {
             "title": "MailClient 邮箱",
-            "desc": "多邮箱统一收件箱",
+            "desc": "多邮箱统一收件箱 · 作者 软件推手",
             "icon": "images/icon_256.png",
             "type": "url",
             "protocol": "http",
