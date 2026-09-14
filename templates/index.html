@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="mc-build" content="{{ build }}">
+<title>MailClient · 多邮箱管理</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/app.css', v=static_v('css/app.css')) }}">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%232f6bff'/><path d='M20 34h60v34H20z' fill='none' stroke='white' stroke-width='6'/><path d='M20 34l30 22 30-22' fill='none' stroke='white' stroke-width='6'/></svg>">
+</head>
+<body>
+
+<div class="app">
+  <!-- ══════════ 左栏 ══════════ -->
+  <aside class="nav">
+    <div class="brand">
+      <div class="logo">✉</div>
+      <div>多邮箱客户端<small>统一收件箱 · v{{ version }} · <span id="verBuild">{{ build }}</span></small></div>
+    </div>
+
+    <button class="btn-add" id="btnAddAccount">＋ 添加邮箱账号</button>
+
+    <div class="nav-title">账号</div>
+    <div id="accountList"></div>
+
+    <div class="nav-title" style="margin-top:14px;">文件夹</div>
+    <div id="folderList"></div>
+
+    <div class="nav-foot">
+      <div class="user-box" id="userBox">
+        <div class="avatar" id="userAvatar">A</div>
+        <div class="meta">
+          <div class="name" id="userName">{{ username or '未登录' }}</div>
+          <div class="addr" id="userRole">管理员</div>
+        </div>
+        <button class="ub-btn" id="btnPwd" title="修改密码" aria-label="修改密码">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="8" cy="15.5" r="3.6"/><path d="M10.6 12.9 19 4.5M15.8 7.7l2.3 2.3M13.2 10.3l2.3 2.3"/>
+          </svg>
+        </button>
+        <a class="ub-btn" id="btnLogout" href="{{ url_for('logout') }}" title="退出登录" aria-label="退出登录">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4"/><path d="M15.5 8.5 19 12l-3.5 3.5"/><path d="M19 12H9"/>
+          </svg>
+        </a>
+      </div>
+      <div class="sync-box" id="syncBox">
+        <span class="dot"></span><span id="syncText">就绪</span>
+        <div class="line" id="syncLine"></div>
+        <button class="btn-mini" id="btnSync">立即同步</button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ══════════ 中栏 ══════════ -->
+  <main class="list">
+    <div class="list-head">
+      <div class="row1">
+        <h1 id="listTitle">收件箱</h1>
+        <span class="count" id="listCount"></span>
+        <div class="tools">
+          <button class="tool" id="btnCompose">＋ 写邮件</button>
+          <button class="tool" id="btnMarkRead">全部已读</button>
+          <button class="tool" id="btnRefresh">刷新</button>
+        </div>
+      </div>
+      <div class="search">
+        <span class="mag">⌕</span>
+        <input id="searchInput" type="search" placeholder="搜索主题、发件人、收件人…">
+      </div>
+    </div>
+
+    <div class="warnbar" id="pwdBar">
+      <b>安全提醒</b>：管理员仍是初始密码 admin123，建议立即修改。
+      <div class="acts"><button id="btnPwd2">去修改密码</button></div>
+    </div>
+    <div class="warnbar" id="warnBar"></div>
+    <div class="maillist" id="mailList"></div>
+  </main>
+
+  <!-- ══════════ 右栏 ══════════ -->
+  <section class="detail" id="detail">
+    <div class="empty">
+      <div>
+        <div class="big">✉</div>
+        <p>从左侧选一封邮件开始</p>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- ══════════ 弹窗：添加账号 ══════════ -->
+<div class="mask" id="addMask">
+  <div class="modal">
+    <h3>添加邮箱账号</h3>
+    <div class="body">
+      <div class="msg err" id="addMsg" style="display:none;"></div>
+
+      <div class="field">
+        <label>邮箱服务商</label>
+        <select id="fldProvider"></select>
+        <div class="hint" id="providerHint"></div>
+      </div>
+
+      <div class="field">
+        <label>邮箱地址</label>
+        <input id="fldEmail" type="email" placeholder="you@example.com" autocomplete="off">
+      </div>
+
+      <div class="field" id="pwdField">
+        <label>密码 / 授权码</label>
+        <input id="fldPassword" type="password" placeholder="多数邮箱需要「授权码」，不是登录密码" autocomplete="off">
+      </div>
+
+      <div id="msBox" style="display:none;">
+        <button class="btn ms" id="btnMsLogin">🔐 使用微软账号登录（OAuth2）</button>
+        <div class="device" id="deviceBox" style="display:none;">
+          <div style="font-size:12px;color:#475569;">① 打开下面的网址　② 输入这串验证码　③ 完成登录后本页会自动继续</div>
+          <div class="code" id="deviceCode">—</div>
+          <a id="deviceLink" href="#" target="_blank" rel="noopener"></a>
+        </div>
+      </div>
+
+      <details style="margin-top:14px;">
+        <summary style="font-size:12px;color:#64748b;cursor:pointer;">高级：手动指定服务器</summary>
+        <div class="grid2" style="margin-top:12px;">
+          <div class="field"><label>IMAP 服务器</label><input id="fldImap"></div>
+          <div class="field"><label>IMAP 端口</label><input id="fldImapPort" type="number"></div>
+          <div class="field"><label>SMTP 服务器</label><input id="fldSmtp"></div>
+          <div class="field"><label>SMTP 端口</label><input id="fldSmtpPort" type="number"></div>
+        </div>
+      </details>
+    </div>
+    <div class="foot">
+      <button class="btn ghost" id="btnAddCancel">取消</button>
+      <button class="btn" id="btnAddSave">保存并测试连接</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ 右键菜单：账号 ══════════ -->
+<div class="ctx-menu" id="ctxMenu" style="display:none;">
+  <div class="ctx-head" id="ctxHead"></div>
+  <button class="ctx-item" id="ctxSync">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+      <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+    </svg>同步此账号
+  </button>
+  <button class="ctx-item danger" id="ctxDelete">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="3 6 5 6 21 6"/>
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+      <path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+    </svg>删除账号
+  </button>
+</div>
+
+<!-- ══════════ 弹窗：删除确认 ══════════ -->
+<div class="mask" id="confirmMask">
+  <div class="modal" style="max-width:420px;">
+    <h3>删除邮箱账号</h3>
+    <div class="body">
+      <p id="confirmText" style="margin:0;font-size:13.5px;line-height:1.8;color:#334155;"></p>
+    </div>
+    <div class="foot">
+      <button class="btn ghost" id="confirmCancel">取消</button>
+      <button class="btn danger" id="confirmOk">删除</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ 弹窗：写邮件 ══════════ -->
+<div class="mask" id="composeMask">
+  <div class="modal wide">
+    <h3>写邮件</h3>
+    <div class="body">
+      <div class="msg err" id="composeMsg" style="display:none;"></div>
+      <div class="field">
+        <label>发件账号</label>
+        <select id="cAccount"></select>
+      </div>
+      <div class="field"><label>收件人</label><input id="cTo" placeholder="多个地址用英文逗号分隔"></div>
+      <div class="grid2">
+        <div class="field"><label>抄送</label><input id="cCc"></div>
+        <div class="field"><label>主题</label><input id="cSubject"></div>
+      </div>
+      <div class="field">
+        <label>正文（支持 HTML）</label>
+        <textarea id="cBody" rows="10" placeholder="在这里写正文…"></textarea>
+      </div>
+      <div class="field">
+        <label>附件</label>
+        <input id="cFiles" type="file" multiple>
+      </div>
+    </div>
+    <div class="foot">
+      <button class="btn ghost" id="btnComposeCancel">取消</button>
+      <button class="btn" id="btnSend">发送</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ 弹窗：修改密码 ══════════ -->
+<div class="mask" id="pwdMask">
+  <div class="modal" style="max-width:430px;">
+    <h3>修改密码</h3>
+    <div class="body">
+      <div class="msg err" id="pwdMsg" style="display:none;"></div>
+      <div class="field">
+        <label>当前密码</label>
+        <input id="pwdOld" type="password" autocomplete="current-password" placeholder="请输入当前密码">
+      </div>
+      <div class="field">
+        <label>新密码</label>
+        <input id="pwdNew" type="password" autocomplete="new-password" placeholder="至少 6 位">
+        <div class="hint">建议字母 + 数字混合，不要用 admin123 这类初始密码。</div>
+      </div>
+      <div class="field">
+        <label>确认新密码</label>
+        <input id="pwdNew2" type="password" autocomplete="new-password" placeholder="再输入一次新密码">
+      </div>
+    </div>
+    <div class="foot">
+      <button class="btn ghost" id="pwdCancel">取消</button>
+      <button class="btn" id="pwdSave">保存新密码</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- 服务端换了新版时的提示条；按钮用内联 onclick，即使 app.js 是旧的也点得动 -->
+<div class="updatebar" id="updateBar" style="display:none;">
+  <span>已发布新版本，刷新后生效</span>
+  <button type="button" onclick="location.reload()">刷新页面</button>
+</div>
+
+<script src="{{ url_for('static', filename='js/app.js', v=static_v('js/app.js')) }}"></script>
+</body>
+</html>

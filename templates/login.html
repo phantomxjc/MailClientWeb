@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>登录 · MailClient</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%232f6bff'/><path d='M20 34h60v34H20z' fill='none' stroke='white' stroke-width='6'/><path d='M20 34l30 22 30-22' fill='none' stroke='white' stroke-width='6'/></svg>">
+<style>
+:root {
+  --brand: #2f6bff; --brand2: #00c2ff;
+  --line: #e3e9f3; --text: #1e293b; --muted: #64748b; --faint: #94a3b8;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+  color: var(--text);
+  background: #eef3fb;
+  background-image:
+    radial-gradient(880px 520px at 10% 6%, #dbe8ff 0%, rgba(219,232,255,0) 62%),
+    radial-gradient(760px 520px at 92% 94%, #d6f2ff 0%, rgba(214,242,255,0) 64%),
+    linear-gradient(150deg, #eef3fb 0%, #e9f0fd 50%, #eff8ff 100%);
+}
+
+/* ══════════ 卡片：左品牌 + 右表单 ══════════ */
+.card {
+  display: grid; grid-template-columns: 292px 1fr;
+  width: 100%; max-width: 788px; background: #fff;
+  border-radius: 20px; overflow: hidden;
+  box-shadow: 0 24px 70px rgba(47,107,255,.16), 0 2px 6px rgba(15,23,42,.05);
+}
+
+/* ── 左侧品牌区 ── */
+.side {
+  position: relative; overflow: hidden; color: #fff;
+  padding: 32px 28px 26px 28px; display: flex; flex-direction: column;
+  background: linear-gradient(160deg, #2f6bff 0%, #1f8bff 54%, #00c2ff 100%);
+}
+.side .blob { position: absolute; border-radius: 50%; background: rgba(255,255,255,.13); }
+.side .b1 { width: 240px; height: 240px; right: -100px; top: -80px; }
+.side .b2 { width: 148px; height: 148px; left: -56px; bottom: -52px; background: rgba(255,255,255,.09); }
+.side .logo {
+  width: 46px; height: 46px; border-radius: 14px; font-size: 22px;
+  background: rgba(255,255,255,.22); display: grid; place-items: center;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.28); position: relative;
+}
+.side h1 { margin: 18px 0 6px 0; font-size: 20px; letter-spacing: -.4px; position: relative; }
+.side .tag { margin: 0; font-size: 12.5px; line-height: 1.75; color: rgba(255,255,255,.85); position: relative; }
+.side ul { position: relative; list-style: none; margin: auto 0 0 0; padding: 18px 0 0 0; font-size: 12.5px; }
+.side li { display: flex; align-items: center; gap: 9px; padding: 6px 0; color: rgba(255,255,255,.94); }
+.side li .ic {
+  width: 22px; height: 22px; border-radius: 7px; flex: none; font-size: 11px;
+  background: rgba(255,255,255,.2); display: grid; place-items: center;
+}
+
+/* ── 右侧表单区 ── */
+.form { padding: 36px 40px 26px 40px; display: flex; flex-direction: column; justify-content: center; }
+.form h2 { margin: 0 0 5px 0; font-size: 22px; letter-spacing: -.6px; }
+.form .sub { margin: 0 0 22px 0; font-size: 12.5px; color: var(--faint); }
+
+.field { margin-bottom: 13px; }
+.field label { display: block; font-size: 12px; font-weight: 600; color: #475569; margin-bottom: 6px; }
+.ipt { position: relative; }
+.ipt .ic {
+  position: absolute; left:12px; top: 50%; transform: translateY(-50%);
+  display: grid; place-items: center; line-height: 1; pointer-events: none;
+  color: var(--faint);
+}
+.ipt .ic svg { display: block; }
+.field:focus-within .ic { color: var(--brand); }
+.ipt input {
+  width: 100%; padding: 11px 12px 11px 34px; border-radius: 11px;
+  border: 1px solid var(--line); background: #f8fafd; color: var(--text);
+  font-size: 14px; font-family: inherit; outline: none; transition: .15s;
+}
+.ipt input::placeholder { color: #b6c2d4; }
+.ipt input:focus { border-color: var(--brand); background: #fff; box-shadow: 0 0 0 3px rgba(47,107,255,.12); }
+.ipt input.suffix { padding-right: 52px; }
+.eye {
+  position: absolute; right: 5px; top: 50%; transform: translateY(-50%);
+  border: 0; background: transparent; color: var(--muted); font-size: 12px;
+  padding: 6px 8px; border-radius: 7px; font-family: inherit; cursor: pointer;
+}
+.eye:hover { background: #eef3fb; color: var(--brand); }
+
+.submit {
+  width: 100%; margin-top: 8px; padding: 12px; border: 0; border-radius: 11px;
+  background: linear-gradient(135deg, var(--brand), var(--brand2)); color: #fff;
+  font-size: 14px; font-weight: 600; font-family: inherit; cursor: pointer;
+  box-shadow: 0 6px 18px rgba(47,107,255,.26); transition: .15s;
+}
+.submit:hover { filter: brightness(1.04); }
+.submit:disabled { opacity: .6; cursor: not-allowed; }
+
+.err {
+  margin: 0 0 14px 0; padding: 9px 12px; border-radius: 9px; font-size: 12.5px;
+  background: #fff1f4; color: #b3123c; border: 1px solid #f8c6d3;
+}
+.tip {
+  margin: 0 0 16px 0; padding: 9px 12px; border-radius: 9px; font-size: 12px;
+  line-height: 1.7; background: #f2f7ff; border: 1px solid #d7e6ff; color: #33518f;
+}
+.tip b { font-family: Consolas, Monaco, monospace; letter-spacing: .3px; }
+.tip span { color: #7d93bd; }
+.foot { margin-top: 20px; font-size: 11.5px; color: #c3cfe0; text-align: center; }
+
+@media (max-width: 760px) {
+  .card { grid-template-columns: 1fr; max-width: 400px; }
+  .side { padding: 24px 24px 20px 24px; }
+  .side ul { display: none; }
+  .form { padding: 26px 24px 22px 24px; }
+}
+</style>
+</head>
+<body>
+<form class="card" method="post">
+  <!-- 左：品牌 -->
+  <div class="side">
+    <div class="blob b1"></div>
+    <div class="blob b2"></div>
+    <div class="logo">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff"
+           stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2.5" y="5" width="19" height="14" rx="3"/><path d="M3.5 7.5 12 13.5l8.5-6"/>
+      </svg>
+    </div>
+    <h1>MailClient</h1>
+    <p class="tag">多邮箱统一收件箱 · Web 版</p>
+    <ul>
+      <li>
+        <span class="ic"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff"
+          stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 6h16v12H4z"/><path d="m5 7.5 7 5 7-5"/></svg></span>
+        多账号邮件聚合，一处查看
+      </li>
+      <li>
+        <span class="ic"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff"
+          stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v4h-4"/></svg></span>
+        定时自动同步收件箱
+      </li>
+      <li>
+        <span class="ic"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff"
+          stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></span>
+        凭据加密存储在本机
+      </li>
+    </ul>
+  </div>
+
+  <!-- 右：表单 -->
+  <div class="form">
+    <h2>登录</h2>
+    <p class="sub">请使用管理员账号进入控制台</p>
+
+    {% if error %}<div class="err">{{ error }}</div>{% endif %}
+    {% if default_hint %}
+    <div class="tip">首次使用请用 <b>admin / admin123</b> 登录，登录后可在左下角「修改密码」更换。<span>（改完本提示自动消失）</span></div>
+    {% endif %}
+
+    <div class="field">
+      <label for="username">用户名</label>
+      <div class="ipt">
+        <span class="ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="8" r="3.6"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg></span>
+        <input id="username" name="username" value="{{ username }}" placeholder="请输入用户名"
+               autocomplete="username" autofocus required>
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="password">密码</label>
+      <div class="ipt">
+        <span class="ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="4" y="10.5" width="16" height="9.5" rx="2.5"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg></span>
+        <input id="password" name="password" type="password" class="suffix" placeholder="请输入密码"
+               autocomplete="current-password" required>
+        <button class="eye" type="button" id="eye" aria-label="显示密码">显示</button>
+      </div>
+    </div>
+
+    <button class="submit" type="submit">登 录</button>
+    <div class="foot">MailClient Web · v{{ version }} · {{ build }}</div>
+  </div>
+</form>
+
+<script>
+  const pw = document.getElementById('password'), eye = document.getElementById('eye');
+  eye.addEventListener('click', () => {
+    const shown = pw.type === 'text';
+    pw.type = shown ? 'password' : 'text';
+    eye.textContent = shown ? '显示' : '隐藏';
+    pw.focus();
+  });
+</script>
+</body>
+</html>

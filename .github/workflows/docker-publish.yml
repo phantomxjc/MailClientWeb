@@ -1,0 +1,106 @@
+name: 构建并发布 Docker 镜像
+
+# 什么时候跑：
+#   · 推送到 main 分支        → 构建并推 latest
+#   · 打 v* 标签（如 v2.0.0）  → 额外推一个版本号标签
+#   · 也可以在 Actions 页面手动点「Run workflow」
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+env:
+  # 镜像名（会变成 ghcr.io/<你的用户名>/mailclientweb）
+  IMAGE_NAME: mailclientweb
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    # 推镜像到 GHCR 需要 packages:write；读代码需要 contents:read
+    permissions:
+      contents: read
+      packages: write
+
+    env:
+      # 没配 Docker Hub 密钥时，这一步相关的都会被自动跳过
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v4
+
+      - name: 准备 Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # ── 推 GitHub 自带镜像仓库（GHCR）：零配置，用内置 token 就行 ──
+      - name: 登录 GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── Docker Hub 是可选加成：在仓库 Settings → Secrets 里加
+      #    DOCKERHUB_USERNAME / DOCKERHUB_TOKEN 就会自动启用 ──
+      - name: 登录 Docker Hub（配了密钥才执行）
+        if: env.DOCKERHUB_USERNAME != ''
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: 生成镜像标签
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=sha-,format=short
+
+      - name: 构建并推送到 GHCR
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          # 只构建 x86_64。想同时出 ARM 版（部分 NAS 是 ARM），
+          # 把下面这行改成： linux/amd64,linux/arm64
+          platforms: linux/amd64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # 复用上次构建的缓存，后续构建快很多
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          # GitHub 的机器在国外，直连 Docker Hub / PyPI 都没问题，用默认值即可。
+          # 若你改用自建 runner 且在国内，可在这里覆盖：
+          # build-args: |
+          #   PY_BASE=docker.1panel.live/library/python:3.12-slim
+
+      # ── 把刚推上去的镜像「原样搬运」到 Docker Hub（不重新构建）──
+      - name: 同步到 Docker Hub（可选）
+        if: env.DOCKERHUB_USERNAME != ''
+        run: |
+          set -e
+          for ref in ${{ steps.meta.outputs.tags }}; do
+            tag="${ref##*:}"
+            target="docker.io/${DOCKERHUB_USERNAME}/${IMAGE_NAME}:${tag}"
+            echo "→ $ref  ⇒  $target"
+            docker buildx imagetools create -t "$target" "$ref"
+          done
+
+      - name: 汇总
+        run: |
+          echo "### 镜像已发布 🎉" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "拉取并运行：" >> $GITHUB_STEP_SUMMARY
+          echo '```bash' >> $GITHUB_STEP_SUMMARY
+          echo "docker run -d --name mailclient -p 8090:8090 -v ./data:/data ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:latest" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY

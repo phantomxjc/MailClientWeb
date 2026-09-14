@@ -1,0 +1,41 @@
+[
+    {
+        "stepTitle": "管理员账号",
+        "items": [
+            {
+                "type": "text",
+                "field": "AUTH_PASSWORD",
+                "label": "管理员初始密码（登录用户名固定为 admin，登录后可在界面左下角修改）",
+                "rules": [],
+                "options": [],
+                "initValue": "admin123"
+            }
+        ]
+    },
+    {
+        "stepTitle": "运行参数",
+        "items": [
+            {
+                "type": "text",
+                "field": "SYNC_INTERVAL_MINUTES",
+                "label": "自动同步间隔（分钟，填 0 关闭定时同步）",
+                "rules": [],
+                "options": [],
+                "initValue": "10"
+            }
+        ]
+    },
+    {
+        "stepTitle": "镜像源（一般不用改）",
+        "items": [
+            {
+                "type": "text",
+                "field": "PY_BASE",
+                "label": "基础镜像地址。安装包已内含离线镜像，保持默认即可离线安装；只有在离线镜像导入失败、又需要换成别的镜像站时才改这里（例如 docker.1ms.run/library/python:3.12-slim）",
+                "rules": [],
+                "options": [],
+                "initValue": "docker.1panel.live/library/python:3.12-slim"
+            }
+        ]
+    }
+]

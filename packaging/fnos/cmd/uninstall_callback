@@ -1,0 +1,32 @@
+#!/bin/bash
+# MailClient 邮箱 —— 卸载后执行
+#
+# 只做一件事：确保容器被清干净（幂等操作，容器已不存在也不会报错）。
+# 镜像有意保留，这样重新安装/升级时不用再等一次构建；
+# 想彻底释放空间可手动执行：docker rmi mailclientweb:2.0.0
+
+CONTAINER_NAME="mailclientweb"
+LOG_DIR="${TRIM_PKGVAR}"
+[ -d "$LOG_DIR" ] || LOG_DIR="/tmp"
+LOG_FILE="${LOG_DIR}/build.log"
+log () { echo "[$(date +'%Y-%m-%d %H:%M:%S')] $*" >> "$LOG_FILE"; }
+
+log "===== uninstall_callback 开始 ====="
+
+if [ -f "${TRIM_APPDEST}/docker/docker-compose.yaml" ]; then
+    name_from_file=$(grep -E '^[[:space:]]*container_name:' "${TRIM_APPDEST}/docker/docker-compose.yaml" | head -1 | awk -F ':' '{print $2}' | xargs)
+    [ -n "$name_from_file" ] && CONTAINER_NAME="$name_from_file"
+fi
+
+if command -v docker >/dev/null 2>&1; then
+    if docker rm -f "$CONTAINER_NAME" >> "$LOG_FILE" 2>&1; then
+        log "已移除容器 $CONTAINER_NAME"
+    else
+        log "容器 $CONTAINER_NAME 不存在或已移除"
+    fi
+else
+    log "docker 命令不可用，跳过容器清理"
+fi
+
+log "卸载完成，数据目录已保留"
+exit 0

@@ -1,0 +1,8 @@
+#!/bin/bash
+# MailClient 邮箱 —— 用户在应用设置页修改环境变量之前执行
+
+LOG_DIR="${TRIM_PKGVAR}"
+[ -d "$LOG_DIR" ] || LOG_DIR="/tmp"
+echo "[$(date +'%Y-%m-%d %H:%M:%S')] ===== config_init：准备应用新配置 =====" >> "${LOG_DIR}/build.log"
+
+exit 0

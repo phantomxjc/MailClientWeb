@@ -1,0 +1,83 @@
+#!/bin/bash
+# MailClient 邮箱 —— 安装完成后执行
+#
+# 为什么要在这里构建镜像：
+#   飞牛启动 Docker 应用时只做 compose up，不会现场构建镜像；
+#   而国内网络又连不上 Docker Hub，不先把基础镜像准备好，
+#   构建会卡在 `FROM python:3.12-slim` 上，安装直接失败（报「无法安装」）。
+#
+# 处理顺序：
+#   1) 基础镜像就绪（随包离线镜像 → 校验能跑 → 兜底走国内镜像站）
+#   2) compose build 把应用镜像构建出来，之后点「启动」就是直接跑
+#
+# 原则：构建失败 **不阻断安装**，只写日志 —— 用户仍可 SSH 上去手动补一次。
+
+FILE_PATH="${TRIM_APPDEST}/docker/docker-compose.yaml"
+IMAGE="mailclientweb:2.0.0"
+
+LOG_DIR="${TRIM_PKGVAR}"
+[ -d "$LOG_DIR" ] || LOG_DIR="/tmp"
+LOG_FILE="${LOG_DIR}/build.log"
+
+log () { echo "[$(date +'%Y-%m-%d %H:%M:%S')] $*" >> "$LOG_FILE"; }
+
+compose_cmd () {
+    if docker compose version >/dev/null 2>&1; then
+        docker compose "$@"
+    elif command -v docker-compose >/dev/null 2>&1; then
+        docker-compose "$@"
+    else
+        return 127
+    fi
+}
+
+log "===== install_callback 开始 ====="
+
+# 把安装向导里填写的值落成 .env（与 compose 同目录）。
+# 这样即使环境变量没被直接传进 compose，变量替换也能读到，避免「向导填了密码却没生效」。
+ENV_FILE="${TRIM_APPDEST}/docker/.env"
+{
+    echo "AUTH_PASSWORD=${AUTH_PASSWORD:-}"
+    echo "SYNC_INTERVAL_MINUTES=${SYNC_INTERVAL_MINUTES:-10}"
+    echo "PY_BASE=${PY_BASE:-docker.1panel.live/library/python:3.12-slim}"
+} > "$ENV_FILE" 2>/dev/null && log "运行参数已写入 $ENV_FILE"
+
+if [ ! -f "$FILE_PATH" ]; then
+    log "找不到 compose 文件（$FILE_PATH），跳过镜像预热"
+    exit 0
+fi
+
+if ! command -v docker >/dev/null 2>&1; then
+    log "docker 命令不可用，跳过镜像预热"
+    exit 0
+fi
+
+# ---- 第一步：基础镜像（离线优先，网络兜底）----
+HELPER="${TRIM_APPDEST}/docker/ensure-base-image.sh"
+if [ -f "$HELPER" ]; then
+    # shellcheck source=/dev/null
+    . "$HELPER"
+    ensure_base_image "${TRIM_APPDEST}" "$LOG_FILE" "${PY_BASE:-python:3.12-slim}"
+else
+    log "找不到辅助脚本 $HELPER，跳过基础镜像准备"
+fi
+
+# ---- 第二步：构建应用镜像 ----
+if docker image inspect "$IMAGE" >/dev/null 2>&1; then
+    log "镜像 $IMAGE 已存在，无需构建"
+else
+    log "镜像 $IMAGE 不存在，开始构建（首次需数分钟，主要花在装 Python 依赖）"
+    if compose_cmd -f "$FILE_PATH" build >> "$LOG_FILE" 2>&1; then
+        log "镜像构建成功"
+    else
+        log "镜像构建失败。安装已继续，可稍后 SSH 到飞牛手动重试："
+        log "  docker compose -f $FILE_PATH build"
+        if [ -n "${TRIM_TEMP_LOGFILE}" ]; then
+            echo "镜像预热失败（不影响安装，首次启动时会自动重试）。详细日志：$LOG_FILE" \
+                > "${TRIM_TEMP_LOGFILE}"
+        fi
+    fi
+fi
+
+log "===== install_callback 结束 ====="
+exit 0

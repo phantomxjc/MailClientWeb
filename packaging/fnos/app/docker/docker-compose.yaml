@@ -1,0 +1,35 @@
+version: "3.8"
+
+# MailClient 邮箱 —— 飞牛 fnOS 版
+# 源码随包提供（./src），镜像不存在时可就地构建。
+# 数据落在飞牛的 data-share 里，覆盖安装 / 升级不会丢。
+services:
+  mailclientweb:
+    container_name: mailclientweb
+    image: mailclientweb:2.0.0
+    build:
+      context: ./src
+      args:
+        # 基础镜像。默认写国内镜像站的完整地址，因为国内直连 Docker Hub 会超时。
+        # 安装钩子会把随包携带的离线镜像打成同名标签，于是构建器直接用本地镜像、
+        # 一次网络请求都不发；万一没有离线镜像，才会真的去这个站点拉。
+        # 海外环境或已配好加速：改成 python:3.12-slim 即可。
+        PY_BASE: "${PY_BASE:-docker.1panel.live/library/python:3.12-slim}"
+        PIP_INDEX: "${PIP_INDEX:-https://pypi.tuna.tsinghua.edu.cn/simple}"
+    restart: unless-stopped
+    ports:
+      - "8090:8090"
+    environment:
+      TZ: Asia/Shanghai
+      DATA_DIR: /data
+      APP_HOST: 0.0.0.0
+      APP_PORT: "8090"
+      # 下面两项来自安装向导（在「应用中心 → 手动安装」时填写）；
+      # 没填则用这里的默认值。中括号语法是 docker compose 的变量默认值写法。
+      # 自动同步间隔（分钟），0 = 关闭定时同步
+      SYNC_INTERVAL_MINUTES: "${SYNC_INTERVAL_MINUTES:-10}"
+      # 管理员初始密码：留空则首次启动创建 admin / admin123，
+      # 登录后可在界面左下角用户卡片里改密码（推荐第一次就改掉）。
+      AUTH_PASSWORD: "${AUTH_PASSWORD:-}"
+    volumes:
+      - "/var/apps/mailclientweb/shares/mailclientweb/data:/data"

@@ -1,0 +1,20 @@
+# 统一用 LF —— 本项目的 cmd/* 是飞牛 Linux 上执行的脚本，
+# 一旦被转成 CRLF，飞牛会报 "bad interpreter: /bin/bash^M"。
+* text=auto eol=lf
+
+# 二进制文件不做行尾转换
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.exe  binary
+*.fpk  binary
+*.gz   binary
+*.tgz  binary
+*.zip  binary
+*.db   binary
+
+# 打包工具生成、需要保持原样的文件
+packaging/fnos/manifest  text eol=lf
+packaging/fnos/cmd/*     text eol=lf

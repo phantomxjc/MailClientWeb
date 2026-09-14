@@ -1,0 +1,14 @@
+{
+    ".url": {
+        "mailclientweb.Application": {
+            "title": "MailClient 邮箱",
+            "desc": "多邮箱统一收件箱",
+            "icon": "images/icon_256.png",
+            "type": "url",
+            "protocol": "http",
+            "port": "8090",
+            "url": "/",
+            "allUsers": false
+        }
+    }
+}

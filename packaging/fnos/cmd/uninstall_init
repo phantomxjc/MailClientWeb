@@ -1,0 +1,11 @@
+#!/bin/bash
+# MailClient 邮箱 —— 卸载前执行
+#
+# 这里不删数据：按飞牛规范，卸载会保留 shares / var 目录，
+# 用户重新安装后邮箱账号、邮件缓存都还在。
+
+LOG_DIR="${TRIM_PKGVAR}"
+[ -d "$LOG_DIR" ] || LOG_DIR="/tmp"
+echo "[$(date +'%Y-%m-%d %H:%M:%S')] ===== uninstall_init：准备卸载，数据目录将保留 =====" >> "${LOG_DIR}/build.log"
+
+exit 0

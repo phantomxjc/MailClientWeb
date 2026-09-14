@@ -1,0 +1,55 @@
+#!/bin/bash
+# MailClient 邮箱 —— 应用生命周期脚本（start / stop / status）
+#
+# 说明：Docker 类应用的容器由飞牛应用中心直接通过 compose 拉起和停止，
+#       这里只负责如实汇报「现在到底跑没跑」，不重复做启停动作。
+
+FILE_PATH="${TRIM_APPDEST}/docker/docker-compose.yaml"
+CONTAINER_NAME="mailclientweb"
+HEALTH_URL="http://127.0.0.1:8090/healthz"
+
+# 从 compose 文件里读出真实的 container_name（改过名字也能跟上）
+if [ -f "$FILE_PATH" ]; then
+    name_from_file=$(grep -E '^[[:space:]]*container_name:' "$FILE_PATH" | head -1 | awk -F ':' '{print $2}' | xargs)
+    if [ -n "$name_from_file" ]; then
+        CONTAINER_NAME="$name_from_file"
+    fi
+fi
+
+is_running () {
+    # 首选：问 docker 这个容器是不是真的在跑
+    if command -v docker >/dev/null 2>&1; then
+        if docker inspect -f '{{.State.Running}}' "$CONTAINER_NAME" 2>/dev/null | grep -q '^true$'; then
+            return 0
+        fi
+    fi
+    # 兜底：探一下自己的健康检查端口（docker 命令不可用时也能判断）
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsS -m 5 "$HEALTH_URL" >/dev/null 2>&1 && return 0
+    fi
+    return 1
+}
+
+case "$1" in
+start)
+    # 由应用中心接管，无需额外动作
+    exit 0
+    ;;
+stop)
+    # 由应用中心接管，无需额外动作
+    exit 0
+    ;;
+status)
+    # 运行中 exit 0；未运行 exit 3
+    if is_running; then
+        echo "mailclientweb is running"
+        exit 0
+    else
+        echo "mailclientweb is not running"
+        exit 3
+    fi
+    ;;
+*)
+    exit 1
+    ;;
+esac

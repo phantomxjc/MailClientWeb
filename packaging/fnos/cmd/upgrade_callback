@@ -1,0 +1,58 @@
+#!/bin/bash
+# MailClient 邮箱 —— 升级完成后执行
+#
+# 新版镜像 tag 变了，而飞牛启动容器时不会现场构建，所以这里把新镜像先 build 出来。
+# 构建失败不阻断升级，只写日志。
+
+FILE_PATH="${TRIM_APPDEST}/docker/docker-compose.yaml"
+IMAGE="mailclientweb:2.0.0"
+
+LOG_DIR="${TRIM_PKGVAR}"
+[ -d "$LOG_DIR" ] || LOG_DIR="/tmp"
+LOG_FILE="${LOG_DIR}/build.log"
+log () { echo "[$(date +'%Y-%m-%d %H:%M:%S')] $*" >> "$LOG_FILE"; }
+
+compose_cmd () {
+    if docker compose version >/dev/null 2>&1; then
+        docker compose "$@"
+    elif command -v docker-compose >/dev/null 2>&1; then
+        docker-compose "$@"
+    else
+        return 127
+    fi
+}
+
+log "===== upgrade_callback 开始 ====="
+
+if [ ! -f "$FILE_PATH" ]; then
+    log "找不到 compose 文件（$FILE_PATH），跳过镜像预热"
+    exit 0
+fi
+
+if ! command -v docker >/dev/null 2>&1; then
+    log "docker 命令不可用，跳过镜像预热"
+    exit 0
+fi
+
+# 基础镜像同样要先就绪 —— 升级后容器重建时，缺基础镜像照样会卡在 FROM 上
+HELPER="${TRIM_APPDEST}/docker/ensure-base-image.sh"
+if [ -f "$HELPER" ]; then
+    # shellcheck source=/dev/null
+    . "$HELPER"
+    ensure_base_image "${TRIM_APPDEST}" "$LOG_FILE" "${PY_BASE:-python:3.12-slim}"
+fi
+
+if docker image inspect "$IMAGE" >/dev/null 2>&1; then
+    log "镜像 $IMAGE 已存在，无需构建"
+    exit 0
+fi
+
+log "镜像 $IMAGE 不存在，开始构建"
+if compose_cmd -f "$FILE_PATH" build >> "$LOG_FILE" 2>&1; then
+    log "镜像构建成功"
+else
+    log "镜像构建失败。升级已继续，可稍后 SSH 到飞牛手动重试："
+    log "  docker compose -f $FILE_PATH build"
+fi
+
+exit 0

@@ -1,0 +1,20 @@
+{
+  "docker-project": {
+    "projects": [
+      {
+        "name": "mailclientweb",
+        "path": "docker"
+      }
+    ]
+  },
+  "data-share": {
+    "shares": [
+      {
+        "name": "mailclientweb"
+      },
+      {
+        "name": "mailclientweb/data"
+      }
+    ]
+  }
+}

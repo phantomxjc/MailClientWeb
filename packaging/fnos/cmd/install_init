@@ -1,0 +1,23 @@
+#!/bin/bash
+# MailClient 邮箱 —— 安装前检查
+#
+# 这一步在应用文件解压之前执行，所以只能做「环境体检」，不能依赖 app 里的文件。
+
+LOG_DIR="${TRIM_PKGVAR}"
+[ -d "$LOG_DIR" ] || LOG_DIR="/tmp"
+LOG_FILE="${LOG_DIR}/build.log"
+log () { echo "[$(date +'%Y-%m-%d %H:%M:%S')] $*" >> "$LOG_FILE"; }
+
+log "===== install_init 开始 ====="
+
+# Docker 是硬依赖：本应用以容器方式运行，没有 docker 装了也跑不起来
+if ! command -v docker >/dev/null 2>&1; then
+    log "检查失败：未找到 docker 命令，中止安装"
+    if [ -n "${TRIM_TEMP_LOGFILE}" ]; then
+        echo "未检测到 Docker。请先在「应用中心 → Docker」确认 Docker 服务正常后再安装本应用。" > "${TRIM_TEMP_LOGFILE}"
+    fi
+    exit 1
+fi
+
+log "docker 可用，检查通过"
+exit 0

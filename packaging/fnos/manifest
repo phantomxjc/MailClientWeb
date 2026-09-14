@@ -1,0 +1,14 @@
+appname               = mailclientweb
+version               = 2.0.0
+display_name          = MailClient 邮箱
+desc                  = 多邮箱统一收件箱：把 QQ、163、Outlook、Gmail 等多个邮箱聚合到一个页面，支持定时同步、收发邮件、附件与账号密码登录。
+platform              = x86
+source                = thirdparty
+maintainer            = phantomxjc
+maintainer_url        = https://github.com/phantomxjc
+distributor           = phantomxjc
+distributor_url       = https://github.com/phantomxjc
+service_port          = 8090
+desktop_uidir         = ui
+desktop_applaunchname = mailclientweb.Application
+changelog             = v2.0.0 首个飞牛 fnOS 版本

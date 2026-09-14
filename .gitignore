@@ -1,0 +1,71 @@
+# ═══════════════════════════════════════════════════════════
+#  MailClient Web —— 提交前必读
+#  ⚠️ 以下规则是「安全边界」，不是可选建议。
+#     任何一条被放开，都可能把你的邮箱授权码推到公网。
+# ═══════════════════════════════════════════════════════════
+
+# ── 凭据与用户数据（绝对不能提交）─────────────────────────
+data/
+data/**
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+oauth_tokens.json
+*.key
+.auth
+*.auth
+.env
+.env.*
+!.env.example
+credentials*.json
+*token*.json
+
+# ── 打包产物（43MB 二进制，走 Release 而不是提交）──────────
+dist/
+*.fpk
+packaging/fnos/app/docker/base-image.tar.gz
+packaging/fnos/app/docker/.env
+packaging/fnos/app/docker/src/
+packaging/fnos/__pycache__/
+
+# ── 第三方二进制：飞牛官方 fnpack，请自行下载 ──────────────
+#     https://static2.fnnas.com/fnpack/fnpack-1.2.3-windows-amd64
+packaging/fnos/fnpack.exe
+packaging/fnos/fnpack
+
+# ── Python ────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+ENV/
+.python-version
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ── 日志与临时文件 ────────────────────────────────────────
+*.log
+*.tmp
+*.bak
+*.orig
+*.swp
+*~
+
+# ── 编辑器 / 操作系统 ─────────────────────────────────────
+.vscode/
+.idea/
+*.sublime-*
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── 桌面版（PySide6）残留，避免误混入 ─────────────────────
+MailClient*.spec
+start.bat
+build/
