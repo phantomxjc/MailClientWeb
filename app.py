@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""MailClient Web —— Flask 主程序。
+"""星尘邮箱（Stardust）—— Flask 主程序。
 
 桌面版（PySide6）的 Web 化版本：同一套 IMAP/OAuth 协议层，界面换成浏览器。
 路由分三类：
@@ -770,7 +770,7 @@ if __name__ == "__main__":
         print("⚠ 警告：AUTH_DISABLED=1，已关闭登录校验，仅限本机调试，切勿在公网使用！")
     port = int(os.environ.get("APP_PORT", "8090"))
     host = os.environ.get("APP_HOST", "127.0.0.1")
-    print(f"* MailClient Web {APP_VERSION}  →  http://{host}:{port}")
+    print(f"* 星尘邮箱 (Stardust) {APP_VERSION}  →  http://{host}:{port}")
     print(f"* 数据目录：{DATA_DIR}")
     print("* 登录方式：用户名 + 密码（初始 admin / admin123，可登录后修改）")
     app.run(host=host, port=port, debug=False, threaded=True)

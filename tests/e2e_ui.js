@@ -1,5 +1,5 @@
 /**
- * MailClientWeb 2.0.2 浏览器端到端测试（CDP，零依赖：Node 22 自带 WebSocket）
+ * StardustMail 2.0.2 浏览器端到端测试（CDP，零依赖：Node 22 自带 WebSocket）
  * 真的启动 Chrome、真的点按钮、真的调接口。
  */
 const { spawn } = require('node:child_process');

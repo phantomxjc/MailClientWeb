@@ -1,11 +1,11 @@
 #!/bin/bash
-# MailClient 邮箱 —— 升级完成后执行
+# 星尘邮箱 —— 升级完成后执行
 #
 # 新版镜像 tag 变了，而飞牛启动容器时不会现场构建，所以这里把新镜像先 build 出来。
 # 构建失败不阻断升级，只写日志。
 
 FILE_PATH="${TRIM_APPDEST}/docker/docker-compose.yaml"
-IMAGE="mailclientweb:2.0.6"
+IMAGE="stardust:2.2.0"
 
 LOG_DIR="${TRIM_PKGVAR}"
 [ -d "$LOG_DIR" ] || LOG_DIR="/tmp"

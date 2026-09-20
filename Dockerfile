@@ -1,5 +1,5 @@
-# MailClient Web —— 多邮箱统一收件箱
-# 构建：docker build -t mailclient-web .
+# 星尘邮箱 —— 多邮箱统一收件箱
+# 构建：docker build -t stardust-web .
 # 运行：见 docker-compose.yml（推荐）或 README.md
 #
 # 两个构建参数（都有合理默认值，一般不用管）：
@@ -40,11 +40,11 @@ RUN mkdir -p /data
 # USER mailuser
 
 # 镜像元数据：记上作者与出处，`docker inspect` 就能反查到项目
-LABEL org.opencontainers.image.title="MailClient Web" \
-      org.opencontainers.image.description="多邮箱统一收件箱（Web 版）。后续更新详情请关注微信公众号「软件推手」" \
-      org.opencontainers.image.authors="软件推手（phantomxjc）" \
-      org.opencontainers.image.url="https://github.com/phantomxjc/MailClientWeb" \
-      org.opencontainers.image.source="https://github.com/phantomxjc/MailClientWeb"
+LABEL org.opencontainers.image.title="星尘邮箱" \
+      org.opencontainers.image.description="多邮箱统一收件箱（Web 版）。后续更新详情请关注微信公众号「轻度技术爱好玩家」" \
+      org.opencontainers.image.authors="轻度技术爱好玩家（phantomxjc）" \
+      org.opencontainers.image.url="https://github.com/phantomxjc/StardustMail" \
+      org.opencontainers.image.source="https://github.com/phantomxjc/StardustMail"
 
 EXPOSE 8090
 VOLUME ["/data"]

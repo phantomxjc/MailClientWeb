@@ -266,7 +266,7 @@ def send_client_id(conn, email):
     """给服务器报一次客户端身份。失败不抛异常——服务商不支持 ID 时回 BAD，忽略即可。"""
     from config import APP_VERSION
     tag = conn._new_tag()
-    payload = ('("name" "MailClient" "version" "%s" "vendor" "MailClient Web" '
+    payload = ('("name" "Stardust Mail" "version" "%s" "vendor" "星尘邮箱" '
                '"support-email" "%s")' % (APP_VERSION, email))
     try:
         conn.send(tag + b" ID " + payload.encode("utf-8") + b"\r\n")

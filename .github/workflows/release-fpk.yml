@@ -13,7 +13,7 @@ on:
 
 env:
   # 产物名（会变成 dist/<APP_NAME>.fpk）
-  APP_NAME: mailclientweb
+  APP_NAME: stardust
   # 飞牛官方打包工具的版本号，与 packaging/fnos/fnpack.exe 保持一致
   FNPACK_VER: "1.2.3"
 
@@ -83,19 +83,19 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          name: MailClient Web ${{ github.ref_name }}
+          name: 星尘邮箱 ${{ github.ref_name }}
           body: |
             ## 下载
 
             | 文件 | 说明 |
             |---|---|
-            | `mailclientweb.fpk` | 飞牛 fnOS 安装包（x86_64，约 44 MB，含离线基础镜像） |
+            | `stardust.fpk` | 飞牛 fnOS 安装包（x86_64，约 44 MB，含离线基础镜像） |
             | `SHA256SUMS.txt` | 校验和，下载后可自行核对 |
 
             想下载最新版，用这个固定链接（版本号变了也不用改）：
 
             ```
-            https://github.com/${{ github.repository }}/releases/latest/download/mailclientweb.fpk
+            https://github.com/${{ github.repository }}/releases/latest/download/stardust.fpk
             ```
 
             ## 安装
@@ -106,9 +106,9 @@ jobs:
             **Docker**：
 
             ```bash
-            docker run -d --name mailclient --restart unless-stopped \
+            docker run -d --name stardust --restart unless-stopped \
               -p 8090:8090 -v ./data:/data \
-              ghcr.io/${{ github.repository_owner }}/mailclientweb:latest
+              ghcr.io/${{ github.repository_owner }}/stardust:latest
             ```
 
             **Flask 直接跑**：
@@ -122,8 +122,8 @@ jobs:
 
             ---
 
-            > 作者：软件推手 / phantomxjc
-            > 后续更新详情请关注微信公众号「软件推手」
+            > 作者：轻度技术爱好玩家 / phantomxjc
+            > 后续更新详情请关注微信公众号「轻度技术爱好玩家」
           generate_release_notes: true
           files: |
             dist/${{ env.APP_NAME }}.fpk

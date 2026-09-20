@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""把 MailClient Web 打包成飞牛 fnOS 可安装的 .fpk 文件。
+"""把 星尘邮箱 打包成飞牛 fnOS 可安装的 .fpk 文件。
 
 它做四件事：
   0. 准备离线基础镜像 python:3.12-slim（见 fetch-base-image.py）——
@@ -386,7 +386,7 @@ def main() -> None:
     if proc.returncode != 0:
         sys.exit(f"✗ fnpack 打包失败（退出码 {proc.returncode}）")
 
-    fpk = list(HERE.glob("*.fpk")) + list(PROJECT.glob("mailclientweb.fpk"))
+    fpk = list(HERE.glob("*.fpk")) + list(PROJECT.glob("*.fpk"))
     if not fpk:
         sys.exit("✗ 打包命令成功，但没找到 .fpk 产物")
 

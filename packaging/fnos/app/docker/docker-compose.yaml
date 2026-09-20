@@ -1,12 +1,12 @@
 version: "3.8"
 
-# MailClient 邮箱 —— 飞牛 fnOS 版
+# 星尘邮箱 —— 飞牛 fnOS 版
 # 源码随包提供（./src），镜像不存在时可就地构建。
 # 数据落在飞牛的 data-share 里，覆盖安装 / 升级不会丢。
 services:
-  mailclientweb:
-    container_name: mailclientweb
-    image: mailclientweb:2.1.0
+  stardust:
+    container_name: stardust
+    image: stardust:2.2.0
     build:
       context: ./src
       args:
@@ -32,9 +32,9 @@ services:
       # 登录后可在界面左下角用户卡片里改密码（推荐第一次就改掉）。
       AUTH_PASSWORD: "${AUTH_PASSWORD:-}"
     volumes:
-      - "/var/apps/mailclientweb/shares/mailclientweb/data:/data"
+      - "/var/apps/stardust/shares/stardust/data:/data"
     labels:
-      # 作者信息（docker inspect mailclientweb 可见）
-      org.opencontainers.image.authors: "软件推手（phantomxjc）"
-      org.opencontainers.image.source: "https://github.com/phantomxjc/MailClientWeb"
-      org.opencontainers.image.description: "多邮箱统一收件箱。后续更新详情请关注微信公众号「软件推手」"
+      # 作者信息（docker inspect stardust 可见）
+      org.opencontainers.image.authors: "轻度技术爱好玩家（phantomxjc）"
+      org.opencontainers.image.source: "https://github.com/phantomxjc/StardustMail"
+      org.opencontainers.image.description: "多邮箱统一收件箱。后续更新详情请关注微信公众号「轻度技术爱好玩家」"

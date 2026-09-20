@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""MailClientWeb 2.0.7 同步隔离验证：
+"""StardustMail 2.0.7 同步隔离验证：
 
 核心回归：一个邮箱出问题（报错 / 卡死），绝不能拖垮后面的账号。
 
@@ -18,7 +18,7 @@ import os, sys, shutil, time
 DATA = r"C:\Users\Administrator\AppData\Local\Temp\mc_test_sync"
 shutil.rmtree(DATA, ignore_errors=True)
 os.environ["DATA_DIR"] = DATA
-sys.path.insert(0, r"D:\360MoveData\Users\Administrator\Desktop\MailClientWeb")
+sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parent.parent))  # 项目根（不写死盘符，改目录也不怕）
 
 import db
 db.init_db()

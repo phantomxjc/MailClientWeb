@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""MailClientWeb 2.0.2 验证：
+"""StardustMail 2.0.2 验证：
    ① 发信地址解析/校验（中文地址不再抛 ascii 错，而是人话报错）
    ② 完整发信链路（桩掉 socket，保留 smtplib 真实编码逻辑）
    ③ 微软 XOAUTH2 发信（老代码必崩的那个）
@@ -10,7 +10,7 @@ import os, sys, shutil, tempfile, pathlib, traceback
 DATA = r"C:\Users\Administrator\AppData\Local\Temp\mc_test_data"
 shutil.rmtree(DATA, ignore_errors=True)
 os.environ["DATA_DIR"] = DATA
-sys.path.insert(0, r"D:\360MoveData\Users\Administrator\Desktop\MailClientWeb")
+sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parent.parent))  # 项目根（不写死盘符，改目录也不怕）
 
 import smtplib
 import db

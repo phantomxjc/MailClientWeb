@@ -2,7 +2,7 @@
   "docker-project": {
     "projects": [
       {
-        "name": "mailclientweb",
+        "name": "stardust",
         "path": "docker"
       }
     ]
@@ -10,10 +10,10 @@
   "data-share": {
     "shares": [
       {
-        "name": "mailclientweb"
+        "name": "stardust"
       },
       {
-        "name": "mailclientweb/data"
+        "name": "stardust/data"
       }
     ]
   }

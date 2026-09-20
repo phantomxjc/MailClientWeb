@@ -1,11 +1,11 @@
 #!/bin/bash
-# MailClient 邮箱 —— 应用生命周期脚本（start / stop / status）
+# 星尘邮箱 —— 应用生命周期脚本（start / stop / status）
 #
 # 说明：Docker 类应用的容器由飞牛应用中心直接通过 compose 拉起和停止，
 #       这里只负责如实汇报「现在到底跑没跑」，不重复做启停动作。
 
 FILE_PATH="${TRIM_APPDEST}/docker/docker-compose.yaml"
-CONTAINER_NAME="mailclientweb"
+CONTAINER_NAME="stardust"
 HEALTH_URL="http://127.0.0.1:8090/healthz"
 
 # 从 compose 文件里读出真实的 container_name（改过名字也能跟上）
@@ -42,10 +42,10 @@ stop)
 status)
     # 运行中 exit 0；未运行 exit 3
     if is_running; then
-        echo "mailclientweb is running"
+        echo "stardust is running"
         exit 0
     else
-        echo "mailclientweb is not running"
+        echo "stardust is not running"
         exit 3
     fi
     ;;

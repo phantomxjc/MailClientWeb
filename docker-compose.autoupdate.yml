@@ -1,9 +1,9 @@
-# MailClient Web —— 拉 GHCR 镜像 + Watchtower 自动更新
+# 星尘邮箱 —— 拉 GHCR 镜像 + Watchtower 自动更新
 #
 #   用法：docker compose -f docker-compose.autoupdate.yml up -d
 #
 # 之后只要往 GitHub 推代码，Actions 会构建新的 :latest 镜像，
-# Watchtower 轮询到镜像变化就会自动拉取并重建 mailclient 容器 —— 无需手动干预。
+# Watchtower 轮询到镜像变化就会自动拉取并重建 stardust 容器 —— 无需手动干预。
 #
 #   · 想换端口：同目录建 .env 写 APP_PORT=9080
 #   · 想改检查频率：改 WATCHTOWER_POLL_INTERVAL（单位秒，默认 300 = 5 分钟）
@@ -11,11 +11,11 @@
 #     所以其它应用的容器不会被它碰。
 #
 # 国内拉不动 ghcr.io 时，把下面两处 image 换成镜像站前缀，例如：
-#   ghcr.nju.edu.cn/phantomxjc/mailclientweb:latest
+#   ghcr.nju.edu.cn/phantomxjc/stardust:latest
 services:
-  mailclient:
-    image: ghcr.io/phantomxjc/mailclientweb:latest
-    container_name: mailclient
+  stardust:
+    image: ghcr.io/phantomxjc/stardust:latest
+    container_name: stardust
     restart: unless-stopped
     ports:
       - "${APP_PORT:-8090}:8090"
@@ -33,7 +33,7 @@ services:
 
   watchtower:
     image: containrrr/watchtower:latest
-    container_name: mailclient-watchtower
+    container_name: stardust-watchtower
     restart: unless-stopped
     environment:
       TZ: Asia/Shanghai

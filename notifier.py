@@ -165,7 +165,7 @@ def _public_keys(ch):
 
 
 def _post(url, payload=None, form=False, raw_text=None, timeout=TIMEOUT):
-    headers = {"User-Agent": "MailClient-Web/2.0 (+https://github.com/phantomxjc/MailClientWeb)"}
+    headers = {"User-Agent": "StardustMail/2.2 (+https://github.com/phantomxjc/StardustMail)"}
     data = None
     if raw_text is not None:
         data = raw_text.encode("utf-8")
@@ -183,7 +183,7 @@ def _post(url, payload=None, form=False, raw_text=None, timeout=TIMEOUT):
 
 def _get(url, timeout=TIMEOUT):
     req = urllib.request.Request(url, headers={
-        "User-Agent": "MailClient-Web/2.0 (+https://github.com/phantomxjc/MailClientWeb)"})
+        "User-Agent": "StardustMail/2.2 (+https://github.com/phantomxjc/StardustMail)"})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return resp.status, resp.read(2000).decode("utf-8", "ignore")
 
@@ -233,7 +233,7 @@ def _send_pushplus(cconf, title, body, link, fields=None):
 def _send_bark(cconf, title, body, link, fields=None):
     key = _need(cconf, "key", "Key")
     url = key.rstrip("/") if key.startswith("http") else f"https://api.day.app/{key}"
-    payload = {"title": title, "body": body, "group": "MailClient"}
+    payload = {"title": title, "body": body, "group": "星尘邮箱"}
     if link:
         payload["url"] = link
     return _post(url, payload)
@@ -686,7 +686,7 @@ def send_test(payload):
     base_url = str(payload.get("base_url") or cfg.get("base_url") or "").strip()
     sample = {
         "subject": "这是一封测试邮件",
-        "from": "MailClient <no-reply@example.com>",
+        "from": "星尘邮箱 <no-reply@example.com>",
         "account": "demo@example.com",
         "time": time.strftime("%Y-%m-%d %H:%M"),
         "email_id": None,

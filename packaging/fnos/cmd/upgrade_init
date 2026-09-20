@@ -1,5 +1,5 @@
 #!/bin/bash
-# MailClient 邮箱 —— 升级前执行
+# 星尘邮箱 —— 升级前执行
 #
 # 数据都在 shares 目录里，升级不动它；这里只确认 docker 可用。
 

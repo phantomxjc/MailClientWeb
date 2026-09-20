@@ -1,4 +1,4 @@
-/* MailClient Web —— 前端逻辑（原生 JS，无构建步骤） */
+/* 星尘邮箱（Stardust）—— 前端逻辑（原生 JS，无构建步骤） */
 
 const S = {
   accounts: [],
@@ -89,7 +89,7 @@ async function bootstrap() {
   S.build = data.build || '';
   S.ui = data.ui || null;
   SET.ui = S.ui || SET.ui;
-  console.log('MailClient UI build:', S.build || '(未返回，可能加载了缓存里的旧脚本)');
+  console.log('星尘邮箱 UI build:', S.build || '(未返回，可能加载了缓存里的旧脚本)');
 
   if (S.account !== 'all' && !S.accounts.some((a) => String(a.id) === String(S.account))) {
     S.account = 'all';

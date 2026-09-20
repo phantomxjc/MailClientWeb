@@ -17,7 +17,7 @@ dist/
 build/
 .venv/
 venv/
-MailClient*.spec
+星尘邮箱*.spec
 _shot*
 start.bat
 .DS_Store

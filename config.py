@@ -6,8 +6,9 @@
 """
 import os
 
-APP_NAME = "MailClient"
-APP_VERSION = "2.1.0"
+APP_NAME = "星尘邮箱"
+APP_NAME_EN = "Stardust"
+APP_VERSION = "2.2.0"
 
 # 项目根目录（app.py / config.py 所在目录）
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))

@@ -1,4 +1,9 @@
-# MailClient Web · 多邮箱统一收件箱（Flask 版）
+# 星尘邮箱 · 多邮箱统一收件箱（Flask 版）
+
+> **v2.2.0 更名说明**：本项目原名为「MailClient Web」，自 2.2.0 起正式更名为 **星尘邮箱（Stardust Mail）**，
+> GitHub 仓库同步更名为 `StardustMail`。安装包名（FNOS `appname`）为 `stardust`，
+> 容器 / 镜像名统一为 `stardust`，飞牛数据目录迁移至 `/var/apps/stardust/shares/stardust/data`。
+> 功能与配置项保持一致（`DATA_DIR` 环境变量、`admin/admin123` 初始账号、8090 端口均未变）。
 
 把桌面版（PySide6）的多邮箱客户端搬到了浏览器里，一台机器跑起来，
 手机、平板、公司电脑都能打开同一个收件箱。协议层（IMAP / OAuth2 / 解析）与桌面版同一套，
@@ -36,7 +41,7 @@
 ## 目录结构
 
 ```
-MailClientWeb/
+StardustMail/
 ├── app.py            # Flask 主程序：页面 + JSON 接口
 ├── config.py         # 数据目录、服务商预设、运行参数
 ├── auth.py           # 登录用户：建号 / 密码哈希 / 失败限流 / 改密码
@@ -67,7 +72,7 @@ MailClientWeb/
 ├── tests/            # 自测脚本（见「怎么自测」）
 │   ├── test_send_and_contacts.py   # 收件人解析 / 发信链路 / 联系人（用桩 SMTP，不联网）
 │   └── e2e_ui.js                   # 真浏览器端到端（CDP，零依赖）
-├── dist/             # 打包产物：mailclientweb.fpk
+├── dist/             # 打包产物：stardust.fpk
 └── docs/             # 界面截图
 ```
 
@@ -125,13 +130,13 @@ docker compose logs -f          # 看日志
 ```
 
 > **不想自己构建？** 仓库自带 GitHub Actions：推到 `main` 就会自动构建镜像并发布到
-> `ghcr.io/<你的用户名>/mailclientweb`。首次发布后记得去
-> **GitHub → 你的 Packages → mailclientweb → Package settings → Change visibility** 改成 Public，
+> `ghcr.io/<你的用户名>/stardust`。首次发布后记得去
+> **GitHub → 你的 Packages → stardust → Package settings → Change visibility** 改成 Public，
 > 别人才能直接 `docker pull`。一条命令就能跑起来：
 >
 > ```bash
-> docker run -d --name mailclient -p 8090:8090 -v ./data:/data \
->   ghcr.io/<你的用户名>/mailclientweb:latest
+> docker run -d --name stardust -p 8090:8090 -v ./data:/data \
+>   ghcr.io/<你的用户名>/stardust:latest
 > ```
 ```
 
@@ -144,7 +149,7 @@ docker compose logs -f          # 看日志
 ```text
 git push 到 main
    └─ GitHub Actions（.github/workflows/docker-publish.yml）自动构建并推
-        ghcr.io/phantomxjc/mailclientweb:latest
+        ghcr.io/phantomxjc/stardust:latest
              └─ NAS 上的 Watchtower 发现镜像变了 → 自动拉取并重建容器
 ```
 
@@ -159,7 +164,7 @@ docker compose -f docker-compose.autoupdate.yml up -d
 ```
 
 `docker-compose.autoupdate.yml` = 上面那份 + 一个 Watchtower 服务（默认每 5 分钟检查一次，
-只盯着 `mailclient` 这一个容器，不会动别的）。以后你只管 `git push`，
+只盯着 `stardust` 这一个容器，不会动别的）。以后你只管 `git push`，
 几分钟后 NAS 上的版本就自动跟上了。
 
 > 不想用 Watchtower，也可以手动一条命令更新：
@@ -174,23 +179,23 @@ docker compose -f docker-compose.autoupdate.yml up -d
 **安装包在 Releases 页面下载**（约 **44 MB**，体积主要是包内自带的离线基础镜像，
 原因见下面「为什么包里要带一个 44 MB 的镜像」），装好后和飞牛自带应用一样出现在桌面。
 
-- 所有版本：<https://github.com/phantomxjc/MailClientWeb/releases>
+- 所有版本：<https://github.com/phantomxjc/StardustMail/releases>
 - 永远下最新版（版本号变了链接也不用改）：
 
   ```
-  https://github.com/phantomxjc/MailClientWeb/releases/latest/download/mailclientweb.fpk
+  https://github.com/phantomxjc/StardustMail/releases/latest/download/stardust.fpk
   ```
 
-自己从源码打包也可以（产物落在 `dist/mailclientweb.fpk`），见下面「自己重新打包 .fpk」。
+自己从源码打包也可以（产物落在 `dist/stardust.fpk`），见下面「自己重新打包 .fpk」。
 FPK 是 44 MB 二进制，**不进 git 仓库**——提交进去会永久留在历史里，之后想删都删不干净，
 所以它只作为 Release 附件分发。
 
-1. 把 `mailclientweb.fpk` 传到 NAS 上任意目录（比如 `/vol1/1000/`）
+1. 把 `stardust.fpk` 传到 NAS 上任意目录（比如 `/vol1/1000/`）
 2. 打开 **应用中心 → 右上角「设置」→ 手动安装应用**，选中这个文件
 3. 安装向导里填两项：**管理员初始密码**（默认 `admin123`）、**自动同步间隔**（默认 10 分钟）
    （第三页的「基础镜像地址」一般不用动）
 4. 等它装完 —— 安装过程会顺手把应用镜像构建好，**首次需几分钟**（主要花在装 Python 依赖）
-5. 装好后桌面出现「MailClient 邮箱」图标，点开即 `http://<NAS的IP>:8090`，用 `admin` + 你设的密码登录
+5. 装好后桌面出现「星尘邮箱 邮箱」图标，点开即 `http://<NAS的IP>:8090`，用 `admin` + 你设的密码登录
 
 #### 为什么包里要带一个 44 MB 的镜像？（遇到「无法安装」看这里）
 
@@ -226,12 +231,12 @@ SKIP_BASE_IMAGE=1 python packaging/fnos/build-fpk.py
 > **构建失败了怎么办**：安装阶段构建失败**不会**中断安装；SSH 进 NAS 补一次即可
 >
 > ```bash
-> docker compose -f /var/apps/mailclientweb/app/docker/docker-compose.yaml build
+> docker compose -f /var/apps/stardust/app/docker/docker-compose.yaml build
 > ```
 >
-> 构建日志：`/usr/local/apps/mailclientweb/build.log`
+> 构建日志：`/usr/local/apps/stardust/build.log`
 >
-> 也可以干脆自己 build 好再装：`docker build -t mailclientweb:2.0.4 .`（在项目根目录执行）。
+> 也可以干脆自己 build 好再装：`docker build -t stardust:2.0.4 .`（在项目根目录执行）。
 
 数据落在飞牛的 data-share 里，**覆盖安装、升级都不会丢，卸载也保留**。
 
@@ -257,7 +262,7 @@ python packaging/fnos/build-fpk.py
 
 用飞牛自带的 **Docker → 项目 / Compose → 新建**：
 
-1. 把整个 `MailClientWeb` 目录传到 NAS（比如 `/vol1/1000/docker/MailClientWeb`）
+1. 把整个 `StardustMail` 目录传到 NAS（比如 `/vol1/1000/docker/StardustMail`）
 2. 项目里粘贴 `docker-compose.yml` 的内容（或指向该目录）
 3. 端口默认映射 `8090`；若被占用，把 `ports` 左边改成 `9080` 之类
 4. 构建并启动。数据会落在同目录的 `data/` 下，升级镜像不会丢
@@ -411,8 +416,8 @@ python packaging/fnos/build-fpk.py
 国内直连 Docker Hub 被墙，安装时飞牛现场构建镜像卡在 `FROM python:3.12-slim`。
 正常的 FPK 里已经带了离线基础镜像，安装时会自动 `docker load`，不会去连 Docker Hub；
 所以先确认你用的是**新打的包**（约 44 MB）而不是早前那个 60 KB 的。
-若仍然失败，SSH 上 NAS 看 `/usr/local/apps/mailclientweb/build.log`，并手工补一次：
-`docker compose -f /var/apps/mailclientweb/app/docker/docker-compose.yaml build`。
+若仍然失败，SSH 上 NAS 看 `/usr/local/apps/stardust/build.log`，并手工补一次：
+`docker compose -f /var/apps/stardust/app/docker/docker-compose.yaml build`。
 详见上文「为什么包里要带一个 44 MB 的镜像」。
 
 **Outlook 显示「登录已被微软接受，但微软拒绝打开邮箱」**
@@ -473,7 +478,7 @@ Python 标准库 `imaplib` 的命令表里没有 `ID`，本程序在 `mail_conn.
 
 ## 七、和桌面版的关系
 
-桌面版在 `../MailClient`（PySide6 + PyInstaller 打包），逻辑层几乎一模一样：
+桌面版在 `../星尘邮箱`（PySide6 + PyInstaller 打包），逻辑层几乎一模一样：
 `mail_conn.py` / `parser.py` / `oauth.py` 三个文件是直接复用的。
 两个版本可以同时用，数据库结构兼容，但**数据目录各自独立**，互不影响。
 

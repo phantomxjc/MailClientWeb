@@ -3,6 +3,6 @@
     {
         "run-as": "package"
     },
-    "username": "docker-mailclientweb",
-    "groupname": "docker-mailclientweb"
+    "username": "docker-stardust",
+    "groupname": "docker-stardust"
 }

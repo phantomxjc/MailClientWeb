@@ -1,15 +1,15 @@
-# MailClient Web —— 直接 `docker compose up -d` 即可
+# 星尘邮箱 —— 直接 `docker compose up -d` 即可
 # 飞牛 NAS：Docker → 项目 → 新建，粘贴本文件内容，或用 SSH 在项目目录执行上面的命令。
 services:
-  mailclient:
+  stardust:
     build:
       context: .
       args:
         # 国内直连 Docker Hub 会超时，默认走镜像站；海外或已配好加速可改回 python:3.12-slim
         PY_BASE: "${PY_BASE:-docker.1panel.live/library/python:3.12-slim}"
         PIP_INDEX: "${PIP_INDEX:-https://pypi.tuna.tsinghua.edu.cn/simple}"
-    image: mailclient-web:latest
-    container_name: mailclient
+    image: stardust:latest
+    container_name: stardust
     restart: unless-stopped
     ports:
       # 左边是宿主机端口，想换只改它（比如 9080）
@@ -27,7 +27,7 @@ services:
       # 数据库、微软令牌、加密密钥都在这里，删了就等于重置
       - ./data:/data
     labels:
-      # 作者信息（docker inspect mailclient 可见）
-      org.opencontainers.image.authors: "软件推手（phantomxjc）"
-      org.opencontainers.image.source: "https://github.com/phantomxjc/MailClientWeb"
-      org.opencontainers.image.description: "多邮箱统一收件箱。后续更新详情请关注微信公众号「软件推手」"
+      # 作者信息（docker inspect stardust 可见）
+      org.opencontainers.image.authors: "轻度技术爱好玩家（phantomxjc）"
+      org.opencontainers.image.source: "https://github.com/phantomxjc/StardustMail"
+      org.opencontainers.image.description: "多邮箱统一收件箱。后续更新详情请关注微信公众号「轻度技术爱好玩家」"

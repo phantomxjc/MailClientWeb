@@ -1,5 +1,5 @@
 #!/bin/bash
-# MailClient 邮箱 —— 基础镜像保障（被 install_callback / upgrade_callback 复用）
+# 星尘邮箱 邮箱 —— 基础镜像保障（被 install_callback / upgrade_callback 复用）
 #
 # 背景：飞牛安装 Docker 应用时会自己执行 `docker compose up`（镜像不存在就现场构建），
 # 而国内大网络环境普遍连不上 Docker Hub，构建第一步 `FROM python:3.12-slim`

@@ -1,5 +1,5 @@
 #!/bin/bash
-# MailClient 邮箱 —— 安装完成后执行
+# 星尘邮箱 —— 安装完成后执行
 #
 # 为什么要在这里构建镜像：
 #   飞牛启动 Docker 应用时只做 compose up，不会现场构建镜像；
@@ -13,7 +13,7 @@
 # 原则：构建失败 **不阻断安装**，只写日志 —— 用户仍可 SSH 上去手动补一次。
 
 FILE_PATH="${TRIM_APPDEST}/docker/docker-compose.yaml"
-IMAGE="mailclientweb:2.0.6"
+IMAGE="stardust:2.2.0"
 
 LOG_DIR="${TRIM_PKGVAR}"
 [ -d "$LOG_DIR" ] || LOG_DIR="/tmp"
@@ -32,9 +32,9 @@ compose_cmd () {
 }
 
 log "===== install_callback 开始 ====="
-log "作者：软件推手（phantomxjc）"
-log "后续更新详情请关注微信公众号「软件推手」"
-log "项目地址：https://github.com/phantomxjc/MailClientWeb"
+log "作者：轻度技术爱好玩家（phantomxjc）"
+log "后续更新详情请关注微信公众号「轻度技术爱好玩家」"
+log "项目地址：https://github.com/phantomxjc/StardustMail"
 
 # 把安装向导里填写的值落成 .env（与 compose 同目录）。
 # 这样即使环境变量没被直接传进 compose，变量替换也能读到，避免「向导填了密码却没生效」。

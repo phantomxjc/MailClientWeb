@@ -11,8 +11,8 @@ on:
   workflow_dispatch:
 
 env:
-  # 镜像名（会变成 ghcr.io/<你的用户名>/mailclientweb）
-  IMAGE_NAME: mailclientweb
+  # 镜像名（会变成 ghcr.io/<你的用户名>/stardust）
+  IMAGE_NAME: stardust
 
 jobs:
   build:
@@ -102,5 +102,5 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "拉取并运行：" >> $GITHUB_STEP_SUMMARY
           echo '```bash' >> $GITHUB_STEP_SUMMARY
-          echo "docker run -d --name mailclient -p 8090:8090 -v ./data:/data ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:latest" >> $GITHUB_STEP_SUMMARY
+          echo "docker run -d --name stardust -p 8090:8090 -v ./data:/data ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:latest" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
