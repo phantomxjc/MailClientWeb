@@ -15,6 +15,8 @@ import re
 
 import oauth
 from accounts import get_password
+from config import IMAP_TIMEOUT
+import db
 
 # 统一的五个分类（界面与数据库都用这套 key）
 CANON_KEYS = ["INBOX", "Sent", "Drafts", "Trash", "Spam"]
@@ -278,15 +280,27 @@ def send_client_id(conn, email):
         return False
 
 
-def connect(acc):
-    """建立并返回一个已登录的 IMAP4_SSL 连接；失败抛 MailAuthError。"""
+def connect(acc, timeout=None):
+    """建立并返回一个已登录的 IMAP4_SSL 连接；失败抛 MailAuthError。
+
+    timeout 会设置到 socket 上。**必须设**：微软限流时（User is authenticated
+    but not connected.）服务器可能既不回应也不断开，没有超时的话 socket 会一直
+    挂着，同步线程吊死在这一步 —— 表现就是「一个邮箱有问题，排在它后面的邮箱
+    全都不同步了」。有了超时，最坏只是这个账号自己失败。
+    """
     host = acc.get("imap_server")
     port = int(acc.get("imap_port") or 993)
     if not host:
         raise MailAuthError("该账号没有配置 IMAP 服务器地址", "generic", None)
 
+    if timeout is None:
+        timeout = IMAP_TIMEOUT
     try:
-        conn = imaplib.IMAP4_SSL(host, port)
+        conn = imaplib.IMAP4_SSL(host, port, timeout=timeout)
+        try:
+            conn.sock.settimeout(timeout)      # 双保险：有的版本构造参数不落到 socket 上
+        except Exception:
+            pass
     except Exception as e:
         raise MailAuthError(f"无法连接 {host}:{port} —— {e}", "network", None)
 
@@ -324,6 +338,46 @@ def _safe_logout(conn):
         conn.logout()
     except Exception:
         pass
+
+
+# ---------------------------------------------------------------- 删除邮件
+def delete_messages(acc, targets):
+    """把一批邮件从服务器删掉。targets = [(folder_key, uid), ...]，都属同一账号。
+
+    语义贴近常见邮箱客户端：
+      · 邮件当前不在「已删除 / 垃圾邮件」里 → **移进「已删除」**（IMAP MOVE），
+        服务器里它还留着，下次同步会作为「已删除」文件夹的邮件重新出现；
+      · 已经在「已删除 / 垃圾邮件」里 → **彻底删除**（标 \\Deleted 再 EXPUNGE）。
+
+    返回 `(failed, msg)`：failed 是没删成的 (folder_key, uid) 列表（连接层面失败
+    直接抛 MailAuthError，不进这里）。单封失败只记进 failed，不连累其它封。
+    """
+    if not targets:
+        return [], ""
+    folders = db.get_folders(acc["id"])
+    trash = folders.get("Trash")
+    conn = connect(acc)
+    failed = []
+    try:
+        for folder_key, uid in targets:
+            src = folders.get(folder_key) or folder_key
+            try:
+                conn.select(quote_mailbox(src), readonly=False)
+                if trash and folder_key not in ("Trash", "Spam"):
+                    typ, _ = conn.uid("move", str(uid), quote_mailbox(trash))
+                    if typ != "OK":
+                        # MOVE 不被支持时的兜底：复制过去 + 源里标删 + 压缩
+                        conn.uid("copy", str(uid), quote_mailbox(trash))
+                        conn.uid("store", str(uid), "+FLAGS.SILENT", "\\Deleted")
+                        conn.expunge()
+                else:
+                    conn.uid("store", str(uid), "+FLAGS.SILENT", "\\Deleted")
+                    conn.expunge()
+            except Exception:
+                failed.append((folder_key, uid))
+    finally:
+        _safe_logout(conn)
+    return failed, ""
 
 
 def test_connection(acc):

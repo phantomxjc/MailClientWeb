@@ -10,10 +10,12 @@
 """
 import email
 import re
+from datetime import datetime, timezone
 from email.header import decode_header
-from email.utils import parsedate_to_datetime
+from email.utils import format_datetime, parsedate_to_datetime
 
-from db import clear_attachments, existing_uids, save_attachment, save_email
+from db import (clear_attachments, emails_missing_date, existing_uids,
+                save_attachment, save_email, set_email_time)
 from mail_conn import quote_mailbox
 
 # 只有这两个文件夹的新邮件值得提醒：别人发进来的。
@@ -108,6 +110,33 @@ def parse_message(msg):
 
 _FLAGS_RE = re.compile(r"FLAGS \(([^)]*)\)", re.IGNORECASE)
 
+# IMAP 的 INTERNALDATE 固定长这样：15-Sep-2026 09:28:00 +0800
+_INTERNALDATE_RE = re.compile(r'INTERNALDATE\s+"([^"]+)"', re.IGNORECASE)
+# `UID FETCH` 批量取时，服务器逐条回 `12 (INTERNALDATE "...")`
+_UID_INTERNALDATE_RE = re.compile(rb'(\d+)\s+\(.*?INTERNALDATE\s+"([^"]+)"', re.IGNORECASE | re.DOTALL)
+
+
+def internaldate_to_header(raw):
+    """把 IMAP 的 INTERNALDATE（服务器收到信的时间）转成 RFC2822 日期串。
+
+    用途是兜底：有些客户端发信不写 `Date` 头，那封邮件在收件方拉回来时
+    `Date` 就是空的 —— 列表里不显示时间，排序也会被压到最底。
+    服务器一定存了 INTERNALDATE，所以缺失时拿它顶上，总比空着强。
+    """
+    if not raw:
+        return ""
+    txt = raw.strip().strip('"')
+    for fmt in ("%d-%b-%Y %H:%M:%S %z", "%d-%b-%Y %H:%M:%S"):
+        try:
+            dt = datetime.strptime(txt, fmt)
+        except ValueError:
+            continue
+        if dt.tzinfo is None:
+            # 少数服务商不返回时区，按 UTC 处理（总比当成零时区乱算好）
+            dt = dt.replace(tzinfo=timezone.utc)
+        return format_datetime(dt)
+    return ""
+
 
 def fetch_folder(account_id, conn, canonical, imap_name, limit=120):
     """在已登录的连接上拉取一个文件夹，返回 (入库邮件数, 新增未读列表)。
@@ -145,22 +174,28 @@ def fetch_folder(account_id, conn, canonical, imap_name, limit=120):
         try:
             # 必须用 BODY.PEEK[]：`RFC822` 等价于 `BODY[]`，按 IMAP 规范会
             # **顺带把服务端这封邮件标成已读**（用户会莫名发现邮件全变已读了）。
-            typ, msg_data = conn.uid("fetch", uid, "(BODY.PEEK[] FLAGS)")
+            typ, msg_data = conn.uid("fetch", uid, "(BODY.PEEK[] FLAGS INTERNALDATE)")
             if typ != "OK" or not msg_data:
                 continue
-            raw, flags = None, ""
+            raw, flags, internal = None, "", ""
             for part in msg_data:
                 if isinstance(part, tuple):
                     head = part[0].decode("utf-8", "ignore") if isinstance(part[0], bytes) else str(part[0])
                     m = _FLAGS_RE.search(head)
                     if m:
                         flags = m.group(1)
+                    m = _INTERNALDATE_RE.search(head)
+                    if m:
+                        internal = m.group(1)
                     raw = part[1]
             if raw is None:
                 continue
 
             msg = email.message_from_bytes(raw)
             info = parse_message(msg)
+            if not (info.get("date") or "").strip():
+                # Date 头缺失（老版本自己发的信就是这样）→ 用服务器接收时间顶上
+                info["date"] = internaldate_to_header(internal)
             seen = 1 if "\\seen" in flags.lower() else 0
 
             email_id = save_email(
@@ -192,3 +227,53 @@ def fetch_folder(account_id, conn, canonical, imap_name, limit=120):
     except Exception:
         pass
     return count, new_items
+
+
+def repair_missing_dates(account_id, conn, canonical, imap_name, limit=300):
+    """给「没有时间」的历史邮件补上服务器接收时间，返回补好的封数。
+
+    为什么需要单独做一次：发信端在 2.0.5 之前漏写 `Date` 头，自己发给自己
+    （或抄送自己）的邮件拉回本地后 `Date` 是空的，列表里既没有时间、排序也
+    被挤到最底。这些邮件正文早就入库了，不可能靠重新拉一遍来修 —— 只能回头
+    单独向服务器要一次 INTERNALDATE（IMAP 必定保存了这个），批量补。
+
+    用 `UID FETCH n,m,k (INTERNALDATE)` 一次问多封，不取正文，代价很小；
+    只跑一次（补好后 date 不再为空，下次就查不出来了）。
+    """
+    rows = emails_missing_date(account_id, canonical, limit)
+    if not rows:
+        return 0
+
+    typ, _ = conn.select(quote_mailbox(imap_name), readonly=True)
+    if typ != "OK":
+        return 0
+
+    uid_of = {str(r["uid"]): r["id"] for r in rows}
+    found = {}
+    # 分批问，单条命令别太长（部分服务商对命令行长度敏感）
+    uids = list(uid_of.keys())
+    for i in range(0, len(uids), 100):
+        chunk = uids[i:i + 100]
+        typ, data = conn.uid("fetch", ",".join(chunk), "(INTERNALDATE)")
+        if typ != "OK" or not data:
+            continue
+        for part in data:
+            blob = part if isinstance(part, bytes) else str(part).encode("utf-8", "ignore")
+            m = _UID_INTERNALDATE_RE.search(blob)
+            if not m:
+                continue
+            uid = m.group(1).decode("ascii", "ignore")
+            header = internaldate_to_header(m.group(2).decode("utf-8", "ignore"))
+            ts = None
+            if header:
+                try:
+                    dt = parsedate_to_datetime(header)
+                    ts = int(dt.timestamp()) if dt else None
+                except Exception:
+                    ts = None
+            if uid in uid_of and (header or ts):
+                found[uid_of[uid]] = (header, ts)
+
+    for email_id, (header, ts) in found.items():
+        set_email_time(email_id, header, ts)
+    return len(found)

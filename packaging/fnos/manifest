@@ -1,5 +1,5 @@
 appname               = mailclientweb
-version               = 2.0.0
+version               = 2.1.0
 display_name          = MailClient 邮箱
 desc                  = 多邮箱统一收件箱：把 QQ、163、Outlook、Gmail 等多个邮箱聚合到一个页面，支持定时同步、收发邮件、附件与账号密码登录。作者：软件推手（phantomxjc）
 platform              = x86
@@ -11,4 +11,4 @@ distributor_url       = https://github.com/phantomxjc/MailClientWeb
 service_port          = 8090
 desktop_uidir         = ui
 desktop_applaunchname = mailclientweb.Application
-changelog             = v2.0.0 首个飞牛 fnOS 版本。作者 软件推手，后续更新详情请关注微信公众号「软件推手」
+changelog             = v2.0.7 修「一个邮箱出问题，它后面的邮箱全都不更新」：后台同步改为每个账号独立线程 + 看门狗超时，单个账号卡死或报错只跳过它、后面的账号照常更新；IMAP 连接增加 30 秒 socket 超时，不再无限挂起。左侧账号行用红色「!」标出没同步成功的那个，鼠标悬停可见原因。左下角三个按钮合并为一个「设置」弹窗（通用 / 新邮件提醒 / 账号安全 / 关于），可开关未读邮件置顶、未读标红，并调整自动同步间隔（改完即时生效）。作者 软件推手，后续更新详情请关注微信公众号「软件推手」

@@ -13,7 +13,7 @@
 # 原则：构建失败 **不阻断安装**，只写日志 —— 用户仍可 SSH 上去手动补一次。
 
 FILE_PATH="${TRIM_APPDEST}/docker/docker-compose.yaml"
-IMAGE="mailclientweb:2.0.0"
+IMAGE="mailclientweb:2.0.6"
 
 LOG_DIR="${TRIM_PKGVAR}"
 [ -d "$LOG_DIR" ] || LOG_DIR="/tmp"

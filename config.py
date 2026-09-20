@@ -7,7 +7,7 @@
 import os
 
 APP_NAME = "MailClient"
-APP_VERSION = "2.0.0"
+APP_VERSION = "2.1.0"
 
 # 项目根目录（app.py / config.py 所在目录）
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -49,6 +49,24 @@ try:
     SYNC_INTERVAL_MINUTES = int(os.environ.get("SYNC_INTERVAL_MINUTES", "10"))
 except ValueError:
     SYNC_INTERVAL_MINUTES = 10
+
+# ---------------------------------------------------------------- 网络超时
+# 这两个值是「一个邮箱有问题，后面邮箱也不更新」的根治办法：
+# 服务器卡住时不设超时，socket 会一直等下去，整个同步线程就吊死在那里，
+# 排在它后面的账号自然一封都拉不到。设了超时，最坏情况也只是这一个账号失败。
+def _env_int(name, default):
+    try:
+        return int(os.environ.get(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+
+
+# 单次 IMAP 读写的最长等待（秒）
+IMAP_TIMEOUT = _env_int("IMAP_TIMEOUT", 30)
+
+# 单个账号一轮同步的总上限（秒）。超过就先跳过它、继续同步后面的账号，
+# 并在界面上明确写出「已跳过」——不能让一个坏账号拖住其余所有邮箱。
+SYNC_ACCOUNT_TIMEOUT = _env_int("SYNC_ACCOUNT_TIMEOUT", 300)
 
 # oauth 字段：microsoft 表示该服务商必须（或推荐）用 OAuth2 现代认证登录
 PROVIDERS = {

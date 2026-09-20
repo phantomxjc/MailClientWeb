@@ -21,6 +21,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent        # packaging/fnos
@@ -85,11 +86,41 @@ def ensure_base_image() -> None:
                  "   也可以设 SKIP_BASE_IMAGE=1 强行跳过（不推荐）")
 
 
+def _reset_dir(path) -> None:
+    """清空并重建目录。
+
+    为什么不直接 shutil.rmtree 了事：WorkBuddy 沙箱里它会被安全垫片接管成
+    「移到回收站」，而且有两种表现 —— 有时静默把目录移走并正常返回，有时抛
+    SHFileOperationW 0x2。前一种最阴：rmtree 返回了，目录却已经不在了，
+    下一个 copy 直接 FileNotFoundError（第二次打包必崩）。
+
+    所以以「改名让开」为主：把旧目录挪到包外的 _stale 再重建。无论 _stale 里的
+    东西最终有没有被真删掉都不影响打包 —— _stale 在 app/ 外面，fnpack 不会
+    把它打进包。
+    """
+    if path.exists():
+        stale = HERE / "_stale"
+        moved = False
+        try:
+            if stale.exists():
+                shutil.rmtree(stale, ignore_errors=True)
+            if stale.exists():              # 删不掉就让一步，别挡路
+                stale.rename(HERE / f"_stale_{int(time.time())}")
+            path.rename(stale)
+            moved = True
+        except Exception:                   # noqa: BLE001
+            pass
+        if not moved:
+            shutil.rmtree(path, ignore_errors=True)
+    path.mkdir(parents=True, exist_ok=True)
+    if not path.is_dir():
+        sys.exit(f"✗ 无法准备目录 {path}\n"
+                 "   可能被沙箱 / 杀软 / 编辑器占用，手动删掉它再试一次")
+
+
 def sync_source() -> int:
     """把源码同步进 app/docker/src/，返回复制的文件数。"""
-    if SRC.exists():
-        shutil.rmtree(SRC)
-    SRC.mkdir(parents=True, exist_ok=True)
+    _reset_dir(SRC)
 
     count = 0
     missing = []
@@ -103,7 +134,7 @@ def sync_source() -> int:
     for name in DIRS:
         s = PROJECT / name
         if s.is_dir():
-            shutil.copytree(s, SRC / name, ignore=IGNORE)
+            shutil.copytree(s, SRC / name, ignore=IGNORE, dirs_exist_ok=True)
             count += sum(1 for _ in (SRC / name).rglob("*") if _.is_file())
         else:
             missing.append(name + "/")

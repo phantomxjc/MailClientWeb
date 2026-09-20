@@ -6,7 +6,7 @@ version: "3.8"
 services:
   mailclientweb:
     container_name: mailclientweb
-    image: mailclientweb:2.0.0
+    image: mailclientweb:2.1.0
     build:
       context: ./src
       args:

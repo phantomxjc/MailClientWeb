@@ -29,6 +29,9 @@ packaging/fnos/app/docker/base-image.tar.gz
 packaging/fnos/app/docker/.env
 packaging/fnos/app/docker/src/
 packaging/fnos/__pycache__/
+# 打包脚本的中间产物：沙箱里删不掉旧 src 时会改名让到这里（在 app/ 外面，
+# 不会被 fnpack 打进包），纯垃圾，别提交
+packaging/fnos/_stale/
 
 # ── 第三方二进制：飞牛官方 fnpack，请自行下载 ──────────────
 #     https://static2.fnnas.com/fnpack/fnpack-1.2.3-windows-amd64

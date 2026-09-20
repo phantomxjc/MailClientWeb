@@ -1,0 +1,48 @@
+# MailClient Web —— 拉 GHCR 镜像 + Watchtower 自动更新
+#
+#   用法：docker compose -f docker-compose.autoupdate.yml up -d
+#
+# 之后只要往 GitHub 推代码，Actions 会构建新的 :latest 镜像，
+# Watchtower 轮询到镜像变化就会自动拉取并重建 mailclient 容器 —— 无需手动干预。
+#
+#   · 想换端口：同目录建 .env 写 APP_PORT=9080
+#   · 想改检查频率：改 WATCHTOWER_POLL_INTERVAL（单位秒，默认 300 = 5 分钟）
+#   · 只盯本项目的容器：下面 label 已限制 com.centurylinklabs.watchtower.enable=true，
+#     所以其它应用的容器不会被它碰。
+#
+# 国内拉不动 ghcr.io 时，把下面两处 image 换成镜像站前缀，例如：
+#   ghcr.nju.edu.cn/phantomxjc/mailclientweb:latest
+services:
+  mailclient:
+    image: ghcr.io/phantomxjc/mailclientweb:latest
+    container_name: mailclient
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-8090}:8090"
+    environment:
+      TZ: Asia/Shanghai
+      DATA_DIR: /data
+      AUTH_PASSWORD: "${AUTH_PASSWORD:-}"
+      SYNC_INTERVAL_MINUTES: "${SYNC_INTERVAL_MINUTES:-10}"
+    volumes:
+      # 数据库、微软令牌、加密密钥都在这里，删了等于重置
+      - ./data:/data
+    labels:
+      # 只有带这个 label 的容器才会被下面的 watchtower 更新
+      com.centurylinklabs.watchtower.enable: "true"
+
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: mailclient-watchtower
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+      # 每 5 分钟检查一次
+      WATCHTOWER_POLL_INTERVAL: "300"
+      # 只更新带上面 label 的容器（别去动 NAS 上其它应用）
+      WATCHTOWER_LABEL_ENABLE: "true"
+      # 更新后清掉旧镜像，省磁盘
+      WATCHTOWER_CLEANUP: "true"
+    volumes:
+      # 需要访问宿主机 docker（挂载 socket 才能重建容器）
+      - /var/run/docker.sock:/var/run/docker.sock

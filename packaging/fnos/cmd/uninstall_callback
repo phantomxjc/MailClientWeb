@@ -3,7 +3,7 @@
 #
 # 只做一件事：确保容器被清干净（幂等操作，容器已不存在也不会报错）。
 # 镜像有意保留，这样重新安装/升级时不用再等一次构建；
-# 想彻底释放空间可手动执行：docker rmi mailclientweb:2.0.0
+# 想彻底释放空间可手动执行：docker rmi mailclientweb:2.0.6
 
 CONTAINER_NAME="mailclientweb"
 LOG_DIR="${TRIM_PKGVAR}"

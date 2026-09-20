@@ -203,12 +203,65 @@ def api_notify_test():
     return jsonify({"ok": ok, "message": message}), (200 if ok else 400)
 
 
+# ---------------------------------------------------------------- 界面设置
+@app.route("/api/settings")
+def api_settings_get():
+    """设置弹窗的「通用」页：未读置顶、未读标红、自动同步间隔。"""
+    return jsonify({"ui": db.get_ui_settings(),
+                    "version": APP_VERSION, "build": BUILD_ID})
+
+
+@app.route("/api/settings", methods=["POST"])
+def api_settings_save():
+    ui = db.set_ui_settings(request.json or {})
+    return jsonify({"ok": True, "ui": ui})
+
+
 @app.route("/")
 def index():
     return render_template("index.html", version=APP_VERSION, build=BUILD_ID,
                            username=session.get("user") or "",
                            auth_disabled=AUTH_DISABLED,
                            sync_interval=SYNC_INTERVAL_MINUTES)
+
+
+# ---------------------------------------------------------------- 常用联系人
+@app.route("/api/contacts")
+def api_contacts():
+    """列表接口。带 q 时按邮箱/姓名/备注模糊搜（写信弹窗的挑选框就用它）。"""
+    q = request.args.get("q", "").strip()
+    return jsonify({"items": db.get_contacts(q)})
+
+
+@app.route("/api/contacts", methods=["POST"])
+def api_contact_save():
+    """新增或覆盖保存。同一个邮箱重复保存就是改名字，不会存成两条。"""
+    data = request.json or {}
+    email = (data.get("email") or "").strip()
+    if "@" not in email:
+        return jsonify({"error": "请填写正确的邮箱地址"}), 400
+    c = db.upsert_contact(email, data.get("name") or "",
+                          note=data.get("note"), source="manual")
+    return jsonify({"ok": True, "contact": c})
+
+
+@app.route("/api/contacts/<int:contact_id>", methods=["PUT", "DELETE"])
+def api_contact_item(contact_id):
+    if request.method == "DELETE":
+        if not db.delete_contact(contact_id):
+            return jsonify({"error": "联系人不存在"}), 404
+        return jsonify({"ok": True})
+    data = request.json or {}
+    try:
+        c = db.update_contact(contact_id,
+                              name=data.get("name"),
+                              note=data.get("note"),
+                              email=data.get("email"))
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    if not c:
+        return jsonify({"error": "联系人不存在"}), 404
+    return jsonify({"ok": True, "contact": c})
 
 
 # ---------------------------------------------------------------- 基础数据
@@ -242,6 +295,7 @@ def api_bootstrap():
         "stats": db.get_stats(),
         "sync": sync_manager.status(),
         "sync_interval": SYNC_INTERVAL_MINUTES,
+        "ui": db.get_ui_settings(),
     })
 
 
@@ -317,6 +371,70 @@ def api_email_seen(email_id):
     threading.Thread(target=_push_seen_to_server, args=(row, bool(seen)),
                      daemon=True).start()
     return jsonify({"ok": True, "seen": seen})
+
+
+def _delete_emails(ids):
+    """真删一批邮件：先回服务器（按账号分组，移入「已删除」或彻底清除），再删本地库。
+
+    返回 {"deleted": 成功删本地的封数, "failed": 服务器没删成的封数}。
+    一条重要原则：**只删服务器确实删成功的本地记录**。连接/鉴权失败或某封在服务器
+    删不动时，这封邮件留在本地列表里（界面不丢、用户可重试），只记进 failed ——
+    避免「界面上没了、服务器里还在」，下次同步又冒回来、让人以为没删掉。
+    """
+    targets = db.get_email_targets(ids)
+    if not targets:
+        return {"deleted": 0, "failed": 0}
+
+    # 按账号分组，每条带 email id 以便回写
+    by_account = {}
+    for t in targets:
+        by_account.setdefault(t["account_id"], []).append(t)
+
+    ok_ids = []        # 服务器侧确认删成的 email id
+    failed = 0
+    for account_id, rows in by_account.items():
+        acc = db.get_account(account_id)
+        if not acc:
+            failed += len(rows)
+            continue
+        try:
+            from mail_conn import delete_messages
+            miss, _ = delete_messages(acc, [(r["folder"], r["uid"]) for r in rows])
+            # miss 是 (folder, uid) 列表，反查出对应的 email id
+            miss_keys = set(miss)
+            for r in rows:
+                if (r["folder"], r["uid"]) in miss_keys:
+                    failed += 1
+                else:
+                    ok_ids.append(r["id"])
+        except Exception:
+            # 连接/鉴权失败：整批服务器删不动，本地也暂不删，避免「界面没了但服务器还在」
+            failed += len(rows)
+            continue
+
+    deleted = db.delete_emails(ok_ids) if ok_ids else 0
+    return {"deleted": deleted, "failed": failed}
+
+
+@app.route("/api/emails/<int:email_id>", methods=["DELETE"])
+def api_delete_email(email_id):
+    """删除单封邮件：移入服务器「已删除」文件夹；若它已在「已删除/垃圾」里则彻底删除。"""
+    row = db.get_email(email_id)
+    if not row:
+        abort(404)
+    res = _delete_emails([email_id])
+    return jsonify({"ok": True, **res})
+
+
+@app.route("/api/emails/batch-delete", methods=["POST"])
+def api_batch_delete_emails():
+    """批量删除：body = {"ids": [id, ...]}。"""
+    ids = (request.json or {}).get("ids") or []
+    ids = [int(x) for x in ids if str(x).isdigit()]
+    if not ids:
+        return jsonify({"ok": False, "error": "没有要删除的邮件"}), 400
+    res = _delete_emails(ids)
+    return jsonify({"ok": True, **res})
 
 
 @app.route("/api/emails/mark-all-read", methods=["POST"])
@@ -558,7 +676,9 @@ def api_send():
         return jsonify({"error": "发件账号不存在"}), 404
 
     to_addr = (form.get("to") or "").strip()
-    if "@" not in to_addr:
+    # 这里只挡住「完全没填」；地址本身合不合法交给 sender 判断 ——
+    # 它会把「缺 @」「全角 @」「中文地址」这些分门别类讲清楚
+    if not to_addr:
         return jsonify({"error": "请填写收件人地址"}), 400
 
     attachments = []
@@ -567,7 +687,7 @@ def api_send():
             attachments.append({"filename": f.filename, "data": f.read()})
 
     try:
-        raw = send_email(
+        raw, rcpt = send_email(
             acc["smtp_server"], acc["smtp_port"], acc["email"], to_addr,
             (form.get("subject") or "").strip(),
             form.get("body") or "",
@@ -579,9 +699,18 @@ def api_send():
             bcc=(form.get("bcc") or "").strip() or None)
     except SendError as e:
         return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        # 兜底：别把 Python 原始异常糊到用户脸上
+        return jsonify({"error": f"发送失败：{e}"}), 400
+
+    # 发出去的收件人自动进常用联系人（次数 +1，用于「常用」排序）
+    try:
+        db.touch_contacts(rcpt)
+    except Exception:
+        pass
 
     threading.Thread(target=_append_to_sent, args=(acc, raw), daemon=True).start()
-    return jsonify({"ok": True})
+    return jsonify({"ok": True, "contacts": len(rcpt)})
 
 
 # ---------------------------------------------------------------- 微软授权
@@ -623,7 +752,7 @@ def _start_background():
         else:
             print(f"* 已创建管理员账号：{name}（初始密码取自环境变量）")
     if auth.default_password_in_use():
-        print("⚠ 安全提示：管理员仍在使用初始密码，登录后请到左下角「修改密码」处更换。")
+        print("⚠ 安全提示：管理员仍在使用初始密码，登录后请在左下角「设置 → 账号安全」里更换。")
     # gunicorn 单 worker 多线程 + Werkzeug 调试重载都会进到这里，用环境变量挡一下重复启动
     if os.environ.get("MC_BG_STARTED") == "1":
         return

@@ -8,7 +8,7 @@ import sqlite3
 import threading
 from email.utils import parsedate_to_datetime
 
-from config import DB_PATH
+from config import DB_PATH, SYNC_INTERVAL_MINUTES
 
 _local = threading.local()
 
@@ -83,6 +83,19 @@ def init_db():
             value TEXT
         );
 
+        -- 常用联系人：手动加的、从收到的邮件里存的、发信时自动记的，都放这张表。
+        -- email 唯一（统一小写），同一个人的邮箱只会有一条记录。
+        CREATE TABLE IF NOT EXISTS contacts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT UNIQUE NOT NULL,
+            name TEXT,
+            note TEXT,
+            source TEXT,
+            use_count INTEGER DEFAULT 0,
+            last_used TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT UNIQUE NOT NULL,
@@ -100,6 +113,7 @@ def init_db():
     conn.commit()
     _one_time_fixes(conn)
     _backfill_ts(conn)
+    _drop_fake_ts(conn)
 
 
 def _one_time_fixes(conn):
@@ -144,6 +158,23 @@ def _backfill_ts(conn):
     if updates:
         conn.executemany("UPDATE emails SET ts=? WHERE id=?", updates)
         conn.commit()
+
+
+def _drop_fake_ts(conn):
+    """清掉「假时间」。
+
+    2.0.5 为了不让没有时间的邮件沉底，把它们的 ts 统统刷成「进程启动那一刻」。
+    副作用是这批邮件全排在同一时刻、还冒充最新被顶到列表最上面，比沉底更糟。
+    现在改成清零：列表按 ts 空值排后面，同时交给 parser.repair_missing_dates
+    去服务器取真实的 INTERNALDATE 填回来（那才是真正解决问题的路）。
+
+    判据很干净：ts 只能从 date 推算，所以「date 为空却有 ts」必定是刷出来的。
+    幂等，不需要一次性标记。
+    """
+    conn.execute(
+        "UPDATE emails SET ts=NULL "
+        "WHERE (date IS NULL OR TRIM(date)='') AND ts IS NOT NULL")
+    conn.commit()
 
 
 # ---------------------------------------------------------------- 凭据
@@ -283,6 +314,9 @@ def save_email(account_id, folder, uid, msg_from, msg_to, subject, date,
             ts = int(dt.timestamp()) if dt else None
         except Exception:
             ts = None
+    # 时间真取不到就留空（列表里按空值沉底），绝不伪造成「现在」——
+    # 伪造会让这封邮件冒充最新被顶到列表最上面，比沉底更误导。
+    # 正常路径走不到这里：parser 会用服务器的 INTERNALDATE 兜底。
 
     conn = get_conn()
     cur = conn.cursor()
@@ -323,6 +357,38 @@ def existing_uids(account_id, folder):
     return {int(r["uid"]) for r in rows if r["uid"] is not None}
 
 
+def emails_missing_date(account_id, folder, limit=300):
+    """找出「时间不可信」的邮件（date 为空，或因此 ts 也空/为 0）。
+
+    这些就是老版本自己发出去的信：Date 头漏写 → 列表里没时间。拉出来交给
+    parser.repair_missing_dates 回头找服务器要 INTERNALDATE。
+    """
+    rows = get_conn().execute(
+        "SELECT id, uid FROM emails WHERE account_id=? AND folder=? "
+        "AND (date IS NULL OR TRIM(date)='' OR ts IS NULL OR ts=0) "
+        "ORDER BY id DESC LIMIT ?",
+        (account_id, folder, int(limit))).fetchall()
+    return [dict(r) for r in rows]
+
+
+def set_email_time(email_id, date=None, ts=None):
+    """补写某封邮件的时间（date 字符串与 ts 时间戳），供上面的修复流程调用。"""
+    sets, params = [], []
+    if date:
+        sets.append("date=?")
+        params.append(date)
+    if ts:
+        sets.append("ts=?")
+        params.append(int(ts))
+    if not sets:
+        return False
+    params.append(email_id)
+    conn = get_conn()
+    conn.execute(f"UPDATE emails SET {', '.join(sets)} WHERE id=?", params)
+    conn.commit()
+    return True
+
+
 def get_meta(key, default=None):
     """meta 表的单值读取（存通知设置、一次性迁移标记这类零散数据）。"""
     row = get_conn().execute("SELECT value FROM meta WHERE key=?", (key,)).fetchone()
@@ -333,6 +399,53 @@ def set_meta(key, value):
     conn = get_conn()
     conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?,?)", (key, value))
     conn.commit()
+
+
+# ---------------------------------------------------------------- 界面设置
+# 存 meta 表而不是配置文件：改完立刻生效，不用重启容器（列表排序要实时看得到变化）。
+_UI_TRUE = ("1", "true", "on", "yes")
+_UI_KEYS = ("unread_top", "unread_red", "sync_interval")
+
+
+def _truthy(value):
+    if isinstance(value, str):
+        return value.strip().lower() in _UI_TRUE
+    return bool(value)
+
+
+def get_ui_settings():
+    """界面设置：未读置顶 / 未读标红 / 自动同步间隔（分钟，0 = 关闭）。"""
+    def flag(key, default):
+        raw = get_meta("ui_" + key)
+        return default if raw is None else str(raw).strip().lower() in _UI_TRUE
+
+    raw = get_meta("ui_sync_interval")
+    try:
+        interval = int(str(raw)) if raw not in (None, "") else int(SYNC_INTERVAL_MINUTES)
+    except (TypeError, ValueError):
+        interval = int(SYNC_INTERVAL_MINUTES)
+    return {
+        "unread_top": flag("unread_top", True),
+        "unread_red": flag("unread_red", True),
+        "sync_interval": max(0, min(interval, 1440)),
+    }
+
+
+def set_ui_settings(data):
+    """写入界面设置（只认上面三个键），返回写完之后的值。"""
+    if isinstance(data, dict):
+        for key in _UI_KEYS:
+            if key not in data:
+                continue
+            if key == "sync_interval":
+                try:
+                    minutes = int(data[key])
+                except (TypeError, ValueError):
+                    continue
+                set_meta("ui_sync_interval", str(max(0, min(minutes, 1440))))
+            else:
+                set_meta("ui_" + key, "1" if _truthy(data[key]) else "0")
+    return get_ui_settings()
 
 
 def clear_attachments(email_id):
@@ -363,7 +476,26 @@ def get_attachment(attachment_id):
     return dict(row) if row else None
 
 
-_ORDER = " ORDER BY COALESCE(e.ts, 0) DESC, e.id DESC"
+_ORDER = " ORDER BY e.seen ASC, COALESCE(e.ts, 0) DESC, e.id DESC"
+# 排序三段：① 未读在前（`seen` 0 排 1 前面），主人要求未读一律顶到列表最上；
+#            ② 同一组内按时间倒序，新的在上；
+#            ③ 时间相同（或都为空）时按入库先后，后进的在上，保证顺序稳定。
+# 可以在 设置 → 通用 里关掉「未读置顶」，关掉后走纯时间倒序（_ORDER_PLAIN）。
+_ORDER_PLAIN = " ORDER BY COALESCE(e.ts, 0) DESC, e.id DESC"
+
+
+def _order_clause():
+    """按当前设置选排序方式。
+
+    每次查一次 meta（单行主键 SELECT，代价可忽略）——这样改完设置刷新列表
+    立刻见效，不需要重启进程或清缓存。
+    """
+    try:
+        if str(get_meta("ui_unread_top", "1")).strip().lower() in ("0", "false", "off", "no"):
+            return _ORDER_PLAIN
+    except Exception:
+        pass
+    return _ORDER
 
 
 def get_emails(account_id=None, folder=None, keyword="", limit=200, unread_only=False):
@@ -388,7 +520,7 @@ def get_emails(account_id=None, folder=None, keyword="", limit=200, unread_only=
            "FROM emails e JOIN accounts a ON e.account_id=a.id")
     if where:
         sql += " WHERE " + " AND ".join(where)
-    sql += _ORDER + " LIMIT ?"
+    sql += _order_clause() + " LIMIT ?"
     params.append(int(limit))
     rows = get_conn().execute(sql, params).fetchall()
 
@@ -409,6 +541,36 @@ def get_email(email_id):
         "FROM emails e JOIN accounts a ON e.account_id=a.id WHERE e.id=?",
         (email_id,)).fetchone()
     return dict(row) if row else None
+
+
+def get_email_targets(ids):
+    """批量取删除所需的 (id, account_id, folder, uid)，只认存在的行。
+
+    用于「删除 / 批量删除」时既要删本地库、又要回服务器（按账号分组、移动/清除）。
+    """
+    if not ids:
+        return []
+    placeholders = ",".join("?" for _ in ids)
+    rows = get_conn().execute(
+        f"SELECT id, account_id, folder, uid FROM emails WHERE id IN ({placeholders})",
+        tuple(int(x) for x in ids)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def delete_emails(ids):
+    """按 id 真删邮件及其附件（先删附件外键，再删邮件行）。"""
+    if not ids:
+        return 0
+    placeholders = ",".join("?" for _ in ids)
+    conn = get_conn()
+    conn.execute(
+        f"DELETE FROM attachments WHERE email_id IN ({placeholders})",
+        tuple(int(x) for x in ids))
+    conn.execute(
+        f"DELETE FROM emails WHERE id IN ({placeholders})",
+        tuple(int(x) for x in ids))
+    conn.commit()
+    return len(ids)
 
 
 def get_unread_count(account_id=None, folder="INBOX"):
@@ -505,3 +667,128 @@ def touch_login(username):
     conn.execute("UPDATE users SET last_login=CURRENT_TIMESTAMP WHERE lower(username)=lower(?)",
                  ((username or "").strip(),))
     conn.commit()
+
+
+# ---------------------------------------------------------------- 常用联系人
+# 三类来源共用一个池子：
+#   manual —— 用户手动添加/编辑的（名字以用户为准）
+#   mail   —— 在收到的邮件里点「存为联系人」
+#   send   —— 发信成功后自动记一笔（use_count+1，用于「常用」排序）
+_CONTACT_COLS = ("id", "email", "name", "note", "source", "use_count", "last_used")
+
+
+def _contact_row(row):
+    return {k: row[k] for k in _CONTACT_COLS} if row else None
+
+
+def norm_email(email):
+    """统一小写去空格消毒 —— 大小写不同的同一个地址不该存成两条。"""
+    return (email or "").strip().strip("<>").strip().lower()
+
+
+def upsert_contact(email, name="", note=None, source="manual", touch=False):
+    """存/更新一个联系人，返回该行。
+
+    名字策略：手动存的一律以用户填的为准；自动收集（发信/收信）只在原来
+    没有名字时补上，免得把用户手改过的名字覆盖掉。
+    """
+    email = norm_email(email)
+    if not email:
+        return None
+    conn = get_conn()
+    row = conn.execute("SELECT * FROM contacts WHERE email=?", (email,)).fetchone()
+    name = (name or "").strip()
+    if row is None:
+        conn.execute(
+            "INSERT INTO contacts (email, name, note, source, use_count, last_used) "
+            "VALUES (?,?,?,?,?, CASE WHEN ?=1 THEN CURRENT_TIMESTAMP END)",
+            (email, name, note, source, 1 if touch else 0, 1 if touch else 0))
+    else:
+        sets, params = [], []
+        if name and (source == "manual" or not (row["name"] or "").strip()):
+            sets.append("name=?")
+            params.append(name)
+        if note is not None:
+            sets.append("note=?")
+            params.append(note)
+        if source == "manual" and row["source"] != "manual":
+            sets.append("source='manual'")
+        if touch:
+            sets.append("use_count=use_count+1")
+            sets.append("last_used=CURRENT_TIMESTAMP")
+        if sets:
+            params.append(email)
+            conn.execute(f"UPDATE contacts SET {', '.join(sets)} WHERE email=?", params)
+    conn.commit()
+    return _contact_row(conn.execute("SELECT * FROM contacts WHERE email=?", (email,)).fetchone())
+
+
+def touch_contacts(items):
+    """发信成功后记一笔：收件人出现次数 +1，用于「常用」排序。"""
+    n = 0
+    for it in items or []:
+        if isinstance(it, dict):
+            mail, nm = norm_email(it.get("addr") or it.get("email")), it.get("name") or ""
+        else:
+            mail, nm = norm_email(it), ""
+        if not mail:
+            continue
+        upsert_contact(mail, nm, source="send", touch=True)
+        n += 1
+    return n
+
+
+def get_contacts(keyword="", limit=500):
+    """联系人列表：常用的排前面（使用次数 → 最近使用 → 有名字的优先）。"""
+    kw = (keyword or "").strip()
+    sql = "SELECT * FROM contacts"
+    params = []
+    if kw:
+        sql += " WHERE email LIKE ? OR name LIKE ? OR note LIKE ?"
+        like = f"%{kw}%"
+        params += [like, like, like]
+    sql += (" ORDER BY use_count DESC, last_used DESC,"
+            " CASE WHEN COALESCE(name,'')='' THEN 1 ELSE 0 END, name COLLATE NOCASE")
+    rows = get_conn().execute(sql + " LIMIT ?", params + [limit]).fetchall()
+    return [_contact_row(r) for r in rows]
+
+
+def get_contact(contact_id):
+    return _contact_row(
+        get_conn().execute("SELECT * FROM contacts WHERE id=?", (contact_id,)).fetchone())
+
+
+def update_contact(contact_id, name=None, note=None, email=None):
+    """改名字/备注/邮箱。改了邮箱后如果和已有的撞了，直接报错不合并。"""
+    conn = get_conn()
+    row = conn.execute("SELECT * FROM contacts WHERE id=?", (contact_id,)).fetchone()
+    if not row:
+        return None
+    sets, params = [], []
+    if email is not None:
+        mail = norm_email(email)
+        if mail and mail != row["email"]:
+            dup = conn.execute("SELECT id FROM contacts WHERE email=?", (mail,)).fetchone()
+            if dup:
+                raise ValueError("这个邮箱已经在常用联系人里了")
+            sets.append("email=?")
+            params.append(mail)
+    if name is not None:
+        sets.append("name=?")
+        params.append((name or "").strip())
+    if note is not None:
+        sets.append("note=?")
+        params.append(note)
+    if sets:
+        sets.append("source='manual'")
+        params.append(contact_id)
+        conn.execute(f"UPDATE contacts SET {', '.join(sets)} WHERE id=?", params)
+        conn.commit()
+    return get_contact(contact_id)
+
+
+def delete_contact(contact_id):
+    conn = get_conn()
+    cur = conn.execute("DELETE FROM contacts WHERE id=?", (contact_id,))
+    conn.commit()
+    return cur.rowcount
