@@ -6,7 +6,7 @@ version: "3.8"
 services:
   stardust:
     container_name: stardust
-    image: stardust:2.2.0
+    image: stardust:2.2.1
     build:
       context: ./src
       args:

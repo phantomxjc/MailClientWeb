@@ -1,5 +1,5 @@
 appname               = stardust
-version               = 2.2.0
+version               = 2.2.1
 display_name          = 星尘邮箱
 desc                  = 多邮箱统一收件箱：把 QQ、163、Outlook、Gmail 等多个邮箱聚合到一个页面，支持定时同步、收发邮件、附件与账号密码登录。作者：轻度技术爱好玩家（phantomxjc）
 platform              = x86
@@ -11,4 +11,4 @@ distributor_url       = https://github.com/phantomxjc/StardustMail
 service_port          = 8090
 desktop_uidir         = ui
 desktop_applaunchname = stardust.Application
-changelog             = v2.2.0 品牌升级：正式更名为「星尘邮箱」（Stardust）。全部界面、安装包、容器与文档中的旧名统一替换；数据目录随包名迁移至 /var/apps/stardust。功能上沿用 2.1.0 的删除 / 批量删除邮件（先回 IMAP 服务器删、仅删确认成功的记录）、7 种新邮件推送通道、设置双栏弹窗与账号级同步隔离、Docker 自动更新部署（GHCR + Watchtower）。后续更新详情请关注微信公众号「轻度技术爱好玩家」
+changelog             = v2.2.1 邮件列表新增「多选 / 删除选中」模式：默认不显示勾选框，列表更干净，点「多选」后才出现勾选框与选择工具条；右侧邮件详情页新增红色「删除」按钮，可一键删除当前邮件。修复两处历史问题：进入多选后列表样式不生效（空文件夹时尤明显）；邮件行网格列数未随多选态调整，导致正文被挤成窄列、整行竖排。后续更新详情请关注微信公众号「轻度技术爱好玩家」

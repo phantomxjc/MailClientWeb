@@ -346,44 +346,104 @@ function check(name, cond, extra = '') {
   check('标记带上失败原因（鼠标悬停可见）', /模拟失败原因/.test(warn.title || ''), warn.title);
   check('清除失败状态后标记消失', warn.after === 0);
 
-  console.log('\n=== I) 删除 / 批量删除 控件 ===');
+  console.log('\n=== I) 删除 / 批量删除 控件（2.2.0 多选模式）===');
   const delUI = await evFn(() => {
     const b = document.getElementById('btnDeleteSel');
     const bar = document.getElementById('selBar');
     const all = document.getElementById('selAll');
+    const txt = document.getElementById('selBtnText');
     return {
       btn: !!b, btnDisabled: b ? b.disabled : null,
+      btnText: txt ? txt.textContent : '',
       btnHasCount: !!(b && b.querySelector('.selcnt')),
-      bar: !!bar, all: !!all,
+      bar: !!bar, barHidden: bar ? bar.hidden : null,
+      all: !!all,
       clear: !!document.getElementById('btnSelClear'),
     };
   });
-  check('列表头有「删除选中」按钮（默认禁用）', delUI.btn && delUI.btnDisabled === true);
-  check('「删除选中」带数量角标元素', delUI.btnHasCount);
-  check('选择工具条（selBar）存在', delUI.bar);
-  check('有「全选本页 / 取消选择」控件', delUI.all && delUI.clear);
+  check('列表头按钮默认文案是「多选」', delUI.btn && delUI.btnText === '多选', delUI.btnText);
+  check('「多选」按钮默认可点（不是灰的）', delUI.btnDisabled === false);
+  check('按钮带数量角标元素', delUI.btnHasCount);
+  check('选择工具条（selBar）默认隐藏', delUI.bar && delUI.barHidden === true);
+  // 只看 hidden 属性不够：CSS 里的 display:flex 会盖掉它，必须查真实可见性
+  const barVis = await evFn(() => {
+    const bar = document.getElementById('selBar');
+    if (!bar) return { found: false };
+    const cs = getComputedStyle(bar);
+    return { found: true, display: cs.display, visible: bar.offsetParent !== null };
+  });
+  check('默认态选择工具条视觉上真的没显示（不只是挂了 hidden）',
+        barVis.found && barVis.visible === false, `display=${barVis.display}`);
+  check('有「全选本页 / 退出多选」控件', delUI.all && delUI.clear);
 
-  // 直接驱动真实的 toggleSelect + refreshSelBar（checkbox 的 onchange 在 loadList 里挂，
-  // 这里不渲染整列邮件，改为调用同样的处理函数，验证逻辑本身）。
+  // 点「多选」→ 进入多选模式：按钮变「删除选中」、工具条出现、列表加 .multi 类（勾选框才显示）
+  const multiUI = await evFn(async () => {
+    const waitFor = async (cond, ms = 1500) => {          // loadList 里有 await api，不能同步读 DOM
+      const t0 = Date.now();
+      while (Date.now() - t0 < ms) {
+        if (cond()) return true;
+        await new Promise((r) => setTimeout(r, 40));
+      }
+      return false;
+    };
+    document.getElementById('btnDeleteSel').click();     // 真实点击，走 setMulti(true)
+    const list = document.getElementById('mailList');
+    await waitFor(() => list.classList.contains('multi'));
+    const txt = document.getElementById('selBtnText');
+    const bar = document.getElementById('selBar');
+    // 勾选框显隐是纯 CSS 规则，空文件夹里没有 .mcheck 元素，直接从样式表判定
+    const hidesWhenIdle = [...document.styleSheets].some((ss) => {
+      try { return [...ss.cssRules].some((r) => (r.selectorText || '').includes('.maillist:not(.multi) .mcheck')); }
+      catch (e) { return false; }
+    });
+    return {
+      text: txt ? txt.textContent : '',
+      barShown: bar ? !bar.hidden : false,
+      multi: list.classList.contains('multi'),
+      isMulti: S.multi,
+      hidesWhenIdle,
+    };
+  });
+  check('点「多选」后按钮变为「删除选中」', multiUI.text === '删除选中', multiUI.text);
+  check('点「多选」后选择工具条浮现', multiUI.barShown);
+  check('点「多选」后列表进入多选态（勾选框才显示）', multiUI.multi && multiUI.isMulti === true);
+  check('默认态有「隐藏勾选框列」的 CSS 规则', multiUI.hidesWhenIdle === true);
+
+  // 多选模式里勾选一封 → 按钮可用、角标 (1)
   const rowUI = await evFn(() => {
     S.sel.clear();
     toggleSelect(9001, true);                 // 真实处理函数
     const btn = document.getElementById('btnDeleteSel');
     const cnt = btn.querySelector('.selcnt');
-    const bar = document.getElementById('selBar');
     const row = document.querySelector('.mail[data-id="9001"]');
     return {
       btnEnabled: !btn.disabled,
       cnt: cnt ? cnt.textContent : '',
-      barShown: !bar.hidden,
       rowSel: !!(row && row.classList.contains('sel')),
     };
   });
-  check('勾选一封后「删除选中」变为可用', rowUI.btnEnabled);
+  check('多选模式下勾选一封后「删除选中」可用', rowUI.btnEnabled);
   check('勾选后数量角标显示 (1)', rowUI.cnt === ' (1)', rowUI.cnt);
-  check('勾选后选择工具条浮现', rowUI.barShown);
-  // 注：无邮件的演示环境里没有 .mail 行，行内 sel 高亮类由 toggleSelect 在真实列表里加，
-  // 这里不断言（逻辑与上面的 refreshSelBar 同源，已随「无 JS 报错」一起验证）。
+
+  // 退出多选：按钮文案回到「多选」、勾选清空、列表退出多选态
+  const exitUI = await evFn(async () => {
+    document.getElementById('btnSelClear').click();
+    const list = document.getElementById('mailList');
+    const t0 = Date.now();
+    while (Date.now() - t0 < 1500 && list.classList.contains('multi')) {
+      await new Promise((r) => setTimeout(r, 40));
+    }
+    const txt = document.getElementById('selBtnText');
+    return {
+      text: txt ? txt.textContent : '',
+      n: S.sel.size,
+      multi: list.classList.contains('multi'),
+      isMulti: S.multi,
+    };
+  });
+  check('点「退出多选」后按钮文案回到「多选」', exitUI.text === '多选', exitUI.text);
+  check('点「退出多选」后勾选被清空', exitUI.n === 0);
+  check('点「退出多选」后列表退出多选态', exitUI.multi === false && exitUI.isMulti === false);
 
   console.log('\n=== J) JS 异常 ===');
   check('全程没有未捕获的 JS 报错', errors.length === 0, errors.slice(0, 3).join(' | '));

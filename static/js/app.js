@@ -13,6 +13,7 @@ const S = {
   keyword: '',
   selected: null,
   sel: new Set(),       // 批量删除：勾选中的邮件 id 集合
+  multi: false,         // 是否处于多选模式（决定列表是否显示勾选框）
   mails: [],
   contacts: [],
   syncAccounts: {},      // 账号 id(str) -> 上次同步结果 {ok, count, error}
@@ -675,7 +676,7 @@ function renderAccounts() {
   }
   box.innerHTML = html;
   box.querySelectorAll('[data-acc]').forEach((el) => {
-    el.onclick = () => { S.account = el.dataset.acc; S.selected = null; renderAccounts(); renderFolders(); loadList(); };
+    el.onclick = () => { S.account = el.dataset.acc; S.selected = null; setMulti(false); renderAccounts(); renderFolders(); };
     const accId = parseInt(el.dataset.acc, 10);      // 「全部账号」是 NaN，不挂菜单
     if (!Number.isFinite(accId)) return;
     const r = S.syncAccounts[String(accId)];
@@ -770,7 +771,7 @@ function renderFolders() {
       <span class="num">${num}</span></div>`;
   }).join('');
   $('folderList').querySelectorAll('[data-folder]').forEach((el) => {
-    el.onclick = () => { S.folder = el.dataset.folder; S.selected = null; renderFolders(); loadList(); };
+    el.onclick = () => { S.folder = el.dataset.folder; S.selected = null; setMulti(false); renderFolders(); };
   });
 }
 
@@ -798,6 +799,8 @@ async function loadList() {
   $('listCount').textContent = S.mails.length ? `${S.mails.length} 封` : '';
 
   const box = $('mailList');
+  // 多选态先同步：空文件夹时下面会提前 return，若不先加类，进多选就看不到任何模式变化
+  box.classList.toggle('multi', S.multi);
   if (!S.mails.length) {
     box.innerHTML = `<div class="empty" style="height:60%;"><div>
       <div class="big">✉</div>
@@ -825,8 +828,18 @@ async function loadList() {
     </div>`).join('');
   box.querySelectorAll('.mail').forEach((el) => {
     el.onclick = (e) => {
+      const id = parseInt(el.dataset.id, 10);
+      // 多选模式下点整行 = 切换勾选，不打开邮件（更顺手，不用对准小方块）
+      if (S.multi) {
+        if (e.target.closest('.mdel')) return;
+        const cb = el.querySelector('.mcheck input');
+        const next = cb ? !cb.checked : !S.sel.has(id);
+        if (cb) cb.checked = next;
+        toggleSelect(id, next);
+        return;
+      }
       if (e.target.closest('.mcheck') || e.target.closest('.mdel')) return;
-      openMail(parseInt(el.dataset.id, 10));
+      openMail(id);
     };
   });
   box.querySelectorAll('.mcheck input').forEach((cb) => {
@@ -854,20 +867,45 @@ function toggleSelect(id, checked) {
 function refreshSelBar() {
   const n = S.sel.size;
   const bar = $('selBar'), btn = $('btnDeleteSel'), cnt = $('selCnt'), info = $('selInfo');
-  if (bar) bar.hidden = n === 0;
-  if (btn) { btn.disabled = n === 0; }
-  if (cnt) cnt.textContent = n ? ` (${n})` : '';
+  const txt = $('selBtnText');
+  if (bar) bar.hidden = !S.multi;
+  if (btn) {
+    // 未进入多选：按钮是「多选」入口，始终可点；进入后变成「删除选中」，没勾选时禁用
+    btn.disabled = S.multi && n === 0;
+    btn.classList.toggle('danger', S.multi);
+    btn.title = S.multi ? '删除勾选的邮件' : '进入多选，勾选后可批量删除';
+  }
+  if (txt) txt.textContent = S.multi ? '删除选中' : '多选';
+  if (cnt) cnt.textContent = (S.multi && n) ? ` (${n})` : '';
   if (info) info.textContent = `已选 ${n} 封`;
   const all = $('selAll');
   if (all) all.checked = n > 0 && n === S.mails.length;
 }
 
-async function deleteOne(id) {
+/* 进入 / 退出多选模式
+   类切换就地同步做掉：勾选框的显隐不该等一次网络往返（loadList 里有 await api），
+   否则点「多选」后要等接口回来才看得到框，手感是卡的。 */
+function setMulti(on) {
+  S.multi = !!on;
+  if (!S.multi) S.sel.clear();
+  const box = $('mailList');
+  if (box) box.classList.toggle('multi', S.multi);
+  refreshSelBar();
+  loadList();          // 重新渲染行内容（勾选态、列宽都在这一步落地）
+}
+
+async function deleteOne(id, opts) {
   if (!confirm('确定删除这封邮件吗？\n（会移入服务器「已删除」，在里面再删才是彻底删除）')) return;
   try {
     const r = await api('/api/emails/' + id, { method: 'DELETE' });
     if (r && r.failed) toast(`已删除，但 ${r.failed} 封没能在服务器上删掉（账号连接失败）`, 'warn');
     S.sel.delete(id);
+    // 从详情页删的：当前打开的就是它，删完把右栏清空，免得留着一封已经不存在的邮件
+    if (opts && opts.fromDetail && S.selected === id) {
+      S.selected = null;
+      $('detail').innerHTML = `<div class="empty" style="height:100%;"><div>
+        <div class="big">✉</div><p>邮件已删除</p></div></div>`;
+    }
     await loadList(); renderFolders(); refreshSelBar();
   } catch (e) {
     toast('删除失败：' + (e.message || e), 'err');
@@ -885,8 +923,10 @@ async function deleteSelected() {
       body: JSON.stringify({ ids }),
     });
     if (r && r.failed) toast(`已删除 ${r.deleted} 封，${r.failed} 封服务器删不动（账号连接失败）`, 'warn');
+    else toast(`已删除 ${r.deleted} 封`, 'ok');
     S.sel.clear();
-    await loadList(); renderFolders(); refreshSelBar();
+    await loadList(); renderFolders();
+    setMulti(false);          // 删完自动退出多选，列表恢复干净（顺手重渲一次）
   } catch (e) {
     toast('删除失败：' + (e.message || e), 'err');
   }
@@ -921,6 +961,7 @@ async function openMail(id) {
         <button id="btnSaveContact" title="把发件人存进常用联系人">存为联系人</button>
         <a href="/api/emails/${m.id}/html" target="_blank" rel="noopener">在新标签打开</a>
         <button id="btnReply">回复</button>
+        <button id="btnDelete" class="danger" title="删除这封邮件">删除</button>
       </div>
       ${attach ? `<div class="attach">${attach}</div>` : ''}
     </div>
@@ -940,6 +981,7 @@ async function openMail(id) {
     loadList();
   };
   $('btnReply').onclick = () => openCompose({ to: m.from_addr, subject: 'Re: ' + (m.subject || '') });
+  $('btnDelete').onclick = async () => { await deleteOne(m.id, { fromDetail: true }); };
   $('btnSaveContact').onclick = async () => {
     const addr = m.from_addr || m.msg_from || '';
     if (!addr || addr.indexOf('@') < 0) { toast('这封邮件没有可用的发件人地址'); return; }
@@ -1042,8 +1084,8 @@ async function bootstrap2Refresh() {
 
 $('btnSync').onclick = syncNow;
 $('btnRefresh').onclick = () => loadList();
-$('btnDeleteSel').onclick = deleteSelected;
-$('btnSelClear').onclick = () => { S.sel.clear(); loadList(); refreshSelBar(); };
+$('btnDeleteSel').onclick = () => { if (S.multi) deleteSelected(); else setMulti(true); };
+$('btnSelClear').onclick = () => setMulti(false);
 $('selAll').onchange = (e) => {
   S.mails.forEach((m) => { if (e.target.checked) S.sel.add(m.id); else S.sel.delete(m.id); });
   loadList(); refreshSelBar();

@@ -88,14 +88,14 @@
         <div class="tools">
           <button class="tool" id="btnCompose">＋ 写邮件</button>
           <button class="tool" id="btnMarkRead" title="把当前账号所有文件夹的未读都标为已读（含垃圾邮件）">全部已读</button>
-          <button class="tool danger" id="btnDeleteSel" disabled title="删除勾选的邮件">删除选中<span class="selcnt" id="selCnt"></span></button>
+          <button class="tool" id="btnDeleteSel" title="进入多选，勾选后可批量删除"><span id="selBtnText">多选</span><span class="selcnt" id="selCnt"></span></button>
           <button class="tool" id="btnRefresh">刷新</button>
         </div>
       </div>
       <div class="selbar" id="selBar" hidden>
         <label class="selall"><input type="checkbox" id="selAll"> 全选本页</label>
         <span class="selinfo" id="selInfo">已选 0 封</span>
-        <button class="tool ghost" id="btnSelClear">取消选择</button>
+        <button class="tool ghost" id="btnSelClear">退出多选</button>
       </div>
       <div class="search">
         <span class="mag">⌕</span>
