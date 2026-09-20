@@ -24,6 +24,9 @@ import mail_conn
 
 db.init_db()
 
+# 保存真实实现：后面几节会把 mail_conn.delete_messages 换成桩，第 6 节要用回真身
+_REAL_DELETE_MESSAGES = mail_conn.delete_messages
+
 
 def check(name, cond, extra=""):
     print(("  ok  " if cond else " FAIL ") + name + (("  → " + str(extra)) if extra and not cond else ""))
@@ -101,7 +104,7 @@ check("连接失败时 failed=3、本地未删",
 
 # ── 4. 空列表安全 ──
 check("空 id 列表不报错",
-      appmod._delete_emails([]) == {"deleted": 0, "failed": 0})
+      appmod._delete_emails([]) == {"deleted": 0, "failed": 0, "reason": ""})
 
 # ── 5. 部分失败：单封 UID 在服务器删不动，只有成功的才删本地 ──
 acc_id, ids = _seed()
@@ -115,6 +118,47 @@ check("部分失败：failed=1、本地只删成功的 2 封",
 left = db.get_conn().execute(
     "SELECT COUNT(*) FROM emails WHERE id=?", (ids[1],)).fetchone()[0]
 check("删不动的那封仍留在本地列表", left == 1, left)
+
+# ── 6. 163 场景：服务器不支持 MOVE（uid('move') 抛 BAD）→ 必须落兜底且算成功 ──
+# 真实复现：163/Coremail 对 MOVE 回 BAD，imaplib 抛 IMAP4.error；
+# 旧代码直接把整封记 failed，界面误报「账号连接失败」。
+import imaplib
+acc_id, ids = _seed()
+
+class _FakeConn:
+    """最小 IMAP 连接桩：move 抛异常，copy/store/expunge 正常应答。"""
+    def __init__(self, move_raises=True, copy_raises=False):
+        self.calls = []
+        self.move_raises = move_raises
+        self.copy_raises = copy_raises
+    def select(self, mbx, readonly=False):
+        self.calls.append(("select", mbx)); return "OK", [b""]
+    def uid(self, cmd, *args):
+        self.calls.append((cmd,) + args)
+        if cmd == "move" and self.move_raises:
+            raise imaplib.IMAP4.error("MOVE command error: BAD ['unknown command']")
+        if cmd == "copy" and self.copy_raises:
+            raise imaplib.IMAP4.error("COPY failed: over quota")
+        return "OK", [b""]
+    def expunge(self):
+        self.calls.append(("expunge",)); return "OK", [b""]
+
+acc_obj = {"id": acc_id, "email": "t@x.com", "imap_server": "imap.x.com", "imap_port": 993}
+fc = _FakeConn()
+mail_conn.connect = lambda a, timeout=None: fc
+miss, errs = _REAL_DELETE_MESSAGES(acc_obj, [("INBOX", 100)])
+check("MOVE 抛异常（163）时兜底成功、不记失败", miss == [] and errs == [], (miss, errs))
+called = [c[0] for c in fc.calls]
+check("兜底真的执行了 copy + store + expunge",
+      "copy" in called and "store" in called and "expunge" in called, called)
+check("源文件夹被重新选中（非只读）",
+      any(c[0] == "select" and c[1] == "INBOX" for c in fc.calls), fc.calls)
+
+# 6b. 连兜底都失败（如超配额）→ 记 failed 并带原因
+fc2 = _FakeConn(copy_raises=True)
+mail_conn.connect = lambda a, timeout=None: fc2
+miss2, errs2 = _REAL_DELETE_MESSAGES(acc_obj, [("INBOX", 100)])
+check("兜底也失败时记 failed 且带原因", len(miss2) == 1 and errs2 and "兜底" in errs2[0][2], errs2)
 
 print("\n=== test_delete:", "全部通过" if _FAILED == 0 else f"{_FAILED} 项失败", "===")
 sys.exit(1 if _FAILED else 0)

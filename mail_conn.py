@@ -349,35 +349,55 @@ def delete_messages(acc, targets):
         服务器里它还留着，下次同步会作为「已删除」文件夹的邮件重新出现；
       · 已经在「已删除 / 垃圾邮件」里 → **彻底删除**（标 \\Deleted 再 EXPUNGE）。
 
-    返回 `(failed, msg)`：failed 是没删成的 (folder_key, uid) 列表（连接层面失败
-    直接抛 MailAuthError，不进这里）。单封失败只记进 failed，不连累其它封。
+    返回 `(failed, errors)`：failed 是没删成的 (folder_key, uid) 列表（连接层面失败
+    直接抛 MailAuthError，不进这里）；errors 是 (folder_key, uid, 错误原文) 列表，
+    供上层把真实原因透给界面。单封失败只记进 failed，不连累其它封。
+
+    163 等不支持 MOVE 的服务器：uid('move') 会让服务器回 BAD、imaplib 直接抛
+    IMAP4.error —— 必须捕获后落进 COPY+标删+EXPUNGE 的兜底，否则整批「删除」
+    看起来全都失败（界面报「账号连接失败」，其实只是服务器不认 MOVE 这条命令）。
     """
     if not targets:
-        return [], ""
+        return [], []
     folders = db.get_folders(acc["id"])
     trash = folders.get("Trash")
     conn = connect(acc)
     failed = []
+    errors = []
     try:
         for folder_key, uid in targets:
             src = folders.get(folder_key) or folder_key
             try:
                 conn.select(quote_mailbox(src), readonly=False)
                 if trash and folder_key not in ("Trash", "Spam"):
-                    typ, _ = conn.uid("move", str(uid), quote_mailbox(trash))
-                    if typ != "OK":
-                        # MOVE 不被支持时的兜底：复制过去 + 源里标删 + 压缩
-                        conn.uid("copy", str(uid), quote_mailbox(trash))
-                        conn.uid("store", str(uid), "+FLAGS.SILENT", "\\Deleted")
-                        conn.expunge()
+                    moved = False
+                    move_err = None
+                    try:
+                        typ, _ = conn.uid("move", str(uid), quote_mailbox(trash))
+                        moved = typ == "OK"
+                    except Exception as e:
+                        # 服务器不认 MOVE（回 BAD / 无此 capability）：不放弃，走兜底
+                        move_err = e
+                    if not moved:
+                        try:
+                            # 兜底：复制过去 + 源里标删 + 压缩
+                            conn.uid("copy", str(uid), quote_mailbox(trash))
+                            conn.uid("store", str(uid), "+FLAGS.SILENT", "\\Deleted")
+                            conn.expunge()
+                        except Exception as e:
+                            failed.append((folder_key, uid))
+                            how = f"MOVE 也失败（{move_err}）；" if move_err else ""
+                            errors.append((folder_key, uid,
+                                           f"{how}复制+标记兜底也失败：{e or e.__class__.__name__}"))
                 else:
                     conn.uid("store", str(uid), "+FLAGS.SILENT", "\\Deleted")
                     conn.expunge()
-            except Exception:
+            except Exception as e:
                 failed.append((folder_key, uid))
+                errors.append((folder_key, uid, str(e) or e.__class__.__name__))
     finally:
         _safe_logout(conn)
-    return failed, ""
+    return failed, errors
 
 
 def test_connection(acc):

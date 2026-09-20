@@ -376,14 +376,15 @@ def api_email_seen(email_id):
 def _delete_emails(ids):
     """真删一批邮件：先回服务器（按账号分组，移入「已删除」或彻底清除），再删本地库。
 
-    返回 {"deleted": 成功删本地的封数, "failed": 服务器没删成的封数}。
+    返回 {"deleted": 成功删本地的封数, "failed": 服务器没删成的封数,
+          "reason": 失败原因摘要（成功时为空串）}。
     一条重要原则：**只删服务器确实删成功的本地记录**。连接/鉴权失败或某封在服务器
     删不动时，这封邮件留在本地列表里（界面不丢、用户可重试），只记进 failed ——
     避免「界面上没了、服务器里还在」，下次同步又冒回来、让人以为没删掉。
     """
     targets = db.get_email_targets(ids)
     if not targets:
-        return {"deleted": 0, "failed": 0}
+        return {"deleted": 0, "failed": 0, "reason": ""}
 
     # 按账号分组，每条带 email id 以便回写
     by_account = {}
@@ -392,14 +393,16 @@ def _delete_emails(ids):
 
     ok_ids = []        # 服务器侧确认删成的 email id
     failed = 0
+    reasons = []       # 服务器侧报错原文（去重后），透给界面
     for account_id, rows in by_account.items():
         acc = db.get_account(account_id)
         if not acc:
             failed += len(rows)
+            reasons.append("账号不存在或已被删除")
             continue
         try:
             from mail_conn import delete_messages
-            miss, _ = delete_messages(acc, [(r["folder"], r["uid"]) for r in rows])
+            miss, errs = delete_messages(acc, [(r["folder"], r["uid"]) for r in rows])
             # miss 是 (folder, uid) 列表，反查出对应的 email id
             miss_keys = set(miss)
             for r in rows:
@@ -407,13 +410,24 @@ def _delete_emails(ids):
                     failed += 1
                 else:
                     ok_ids.append(r["id"])
-        except Exception:
+            # errs 可能是 [(folder, uid, 原文), ...]；兼容旧桩返回的字符串
+            if errs and not isinstance(errs, str):
+                for e in errs:
+                    try:
+                        reasons.append(str(e[2]))
+                    except Exception:
+                        reasons.append(str(e))
+        except Exception as e:
             # 连接/鉴权失败：整批服务器删不动，本地也暂不删，避免「界面没了但服务器还在」
             failed += len(rows)
+            reasons.append(str(e) or e.__class__.__name__)
+            app.logger.warning("删除邮件：账号 %s 服务器侧失败：%s", account_id, e)
             continue
 
     deleted = db.delete_emails(ok_ids) if ok_ids else 0
-    return {"deleted": deleted, "failed": failed}
+    # 去重保序、截断，避免一条超长 IMAP 报错撑爆 toast
+    uniq = list(dict.fromkeys(x for x in reasons if x))[:3]
+    return {"deleted": deleted, "failed": failed, "reason": "；".join(uniq)[:300]}
 
 
 @app.route("/api/emails/<int:email_id>", methods=["DELETE"])

@@ -122,8 +122,8 @@ jobs:
 
             ---
 
-            > 作者：轻度技术爱好玩家 / phantomxjc
-            > 后续更新详情请关注微信公众号「轻度技术爱好玩家」
+            > 作者：软件推手 / phantomxjc
+            > 后续更新详情请关注微信公众号「软件推手」
           generate_release_notes: true
           files: |
             dist/${{ env.APP_NAME }}.fpk

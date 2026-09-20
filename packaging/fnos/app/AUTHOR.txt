@@ -1,11 +1,11 @@
 星尘邮箱（Stardust Mail）· 飞牛 fnOS 安装包
 ════════════════════════════════════════════
 
-作者        ：轻度技术爱好玩家 / phantomxjc
+作者        ：软件推手 / phantomxjc
 项目主页    ：https://github.com/phantomxjc/StardustMail
 容器镜像    ：ghcr.io/phantomxjc/stardustmail（本地构建标签 stardust:2.2.0）
 
-后续更新详情请关注微信公众号「轻度技术爱好玩家」
+后续更新详情请关注微信公众号「软件推手」
 
 ────────────────────────────────────────────
 默认登录    ：admin / admin123（首次登录后请到界面左下角「修改密码」）

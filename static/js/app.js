@@ -898,7 +898,11 @@ async function deleteOne(id, opts) {
   if (!confirm('确定删除这封邮件吗？\n（会移入服务器「已删除」，在里面再删才是彻底删除）')) return;
   try {
     const r = await api('/api/emails/' + id, { method: 'DELETE' });
-    if (r && r.failed) toast(`已删除，但 ${r.failed} 封没能在服务器上删掉（账号连接失败）`, 'warn');
+    if (r && r.failed) {
+      // reason 是服务器侧的报错原文（如 163 不支持 MOVE 时的具体回应），别再写死「账号连接失败」
+      const why = r.reason ? `：${r.reason}` : '';
+      toast(`已删除，但 ${r.failed} 封没能在服务器上删掉${why}`, 'warn');
+    }
     S.sel.delete(id);
     // 从详情页删的：当前打开的就是它，删完把右栏清空，免得留着一封已经不存在的邮件
     if (opts && opts.fromDetail && S.selected === id) {
@@ -922,7 +926,10 @@ async function deleteSelected() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ids }),
     });
-    if (r && r.failed) toast(`已删除 ${r.deleted} 封，${r.failed} 封服务器删不动（账号连接失败）`, 'warn');
+    if (r && r.failed) {
+      const why = r.reason ? `：${r.reason}` : '';
+      toast(`已删除 ${r.deleted} 封，${r.failed} 封服务器删不动${why}`, 'warn');
+    }
     else toast(`已删除 ${r.deleted} 封`, 'ok');
     S.sel.clear();
     await loadList(); renderFolders();

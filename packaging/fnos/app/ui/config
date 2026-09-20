@@ -2,7 +2,7 @@
     ".url": {
         "stardust.Application": {
             "title": "星尘邮箱",
-            "desc": "多邮箱统一收件箱 · 作者 轻度技术爱好玩家",
+            "desc": "多邮箱统一收件箱 · 作者 软件推手",
             "icon": "images/icon_256.png",
             "type": "url",
             "protocol": "http",
