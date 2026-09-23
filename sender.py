@@ -20,7 +20,7 @@ from email.header import Header
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from email.utils import formataddr, formatdate, getaddresses
+from email.utils import formataddr, formatdate, getaddresses, make_msgid
 
 import oauth
 from accounts import get_password
@@ -160,8 +160,9 @@ def send_email(smtp_server, smtp_port, from_addr, to_addr, subject, body,
                cc=None, bcc=None):
     """attachments: [{"filename": str, "data": bytes}]
 
-    返回 (raw 报文 bytes, recipients 列表) —— 调用方需要这两个：
-    原始报文用于 APPEND 到服务端「已发送」，收件人列表用于记常用联系人。
+    返回 (raw 报文 bytes, recipients 列表, Message-ID) —— 调用方需要这三个：
+    原始报文用于 APPEND 到服务端「已发送」，收件人列表用于记常用联系人，
+    Message-ID 用于 APPEND 前查重。
     """
     # 先解析地址：有中文地址就在这里给出人话报错，别等 smtplib 抛 ascii 错
     to_list = parse_recipients(to_addr)
@@ -172,6 +173,12 @@ def send_email(smtp_server, smtp_port, from_addr, to_addr, subject, body,
     from_addr = _ascii_addr(from_addr, "发件账号")
 
     msg = MIMEMultipart()
+    # Message-ID 必须自己生成：Python 的 email 包不会自动加。没有它，
+    # ① 企业邮箱（如阿里）服务端自动保存一封已发送、客户端再 APPEND 一封，
+    #    两封没法判定是同一封，已发送里就出现重复；
+    # ② 部分收件方（QQ 企业邮、Outlook）更容易把无 Message-ID 的信判成垃圾邮件。
+    msgid = make_msgid(domain=from_addr.rpartition("@")[-1])
+    msg["Message-ID"] = msgid
     msg["From"] = (_head(from_name, from_addr) if from_name else from_addr)
     msg["To"] = ", ".join(_head(c["name"], c["addr"]) for c in to_list)
     if cc_list:
@@ -194,6 +201,17 @@ def send_email(smtp_server, smtp_port, from_addr, to_addr, subject, body,
         msg.attach(part)
 
     all_rcpt = to_list + cc_list + bcc_list
+    # 全局去重（to/cc/bcc 之间各自去重了，但跨字段没有）：同一个人既在收件人
+    # 又在抄送里时，SMTP 会按 RCPT TO 各投一次 —— 收件人真的会收到两封。
+    seen_addr = set()
+    deduped = []
+    for c in all_rcpt:
+        key = c["addr"].lower()
+        if key in seen_addr:
+            continue
+        seen_addr.add(key)
+        deduped.append(c)
+    all_rcpt = deduped
     recipients = [c["addr"] for c in all_rcpt]
     raw = msg.as_bytes()
 
@@ -251,6 +269,7 @@ def send_email(smtp_server, smtp_port, from_addr, to_addr, subject, body,
             server.quit()
         except Exception:
             pass
-    # 返回原始报文 + 收件人：调用方可以把报文 APPEND 到服务端「已发送」，
-    # 并把收件人记进常用联系人
-    return raw, all_rcpt
+    # 返回原始报文 + 收件人 + Message-ID：调用方可以把报文 APPEND 到服务端
+    # 「已发送」（APPEND 前可按 Message-ID 查重，防企业邮箱服务端已自动保存
+    # 导致的重复），并把收件人记进常用联系人
+    return raw, all_rcpt, msgid

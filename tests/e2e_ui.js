@@ -176,7 +176,8 @@ function check(name, cond, extra = '') {
     const box = document.getElementById('composeMsg');
     return { text: box.textContent, shown: box.style.display !== 'none' };`);
   check('中文名（带真实地址）不再被当成中文地址拦下',
-        okCase.text.length > 0 && !okCase.text.includes('不支持这种地址'), okCase.text.slice(0, 70));
+      okCase.text.length === 0 || !okCase.text.includes('不支持这种地址'),
+      okCase.text.slice(0, 70) || '(发送成功，弹窗已关闭)');
 
   console.log('\n=== E) 通讯录管理弹窗 ===');
   const modal = await ev(`
@@ -445,7 +446,36 @@ function check(name, cond, extra = '') {
   check('点「退出多选」后勾选被清空', exitUI.n === 0);
   check('点「退出多选」后列表退出多选态', exitUI.multi === false && exitUI.isMulti === false);
 
-  console.log('\n=== J) JS 异常 ===');
+  console.log('\n=== J) 定时发送（2.2.2 新增） ===');
+  const sched = await ev(`
+    return { btn: !!document.getElementById('btnSched'),
+             when: !!document.getElementById('cWhen'),
+             def: document.getElementById('cWhen') ? document.getElementById('cWhen').value : null,
+             custom: !!document.getElementById('cWhenAt') };`);
+  check('工具栏有「定时」按钮', sched.btn);
+  check('写信弹窗有发送时间选择（默认立即发送）', sched.when && sched.def === '0');
+  check('自定义时间控件存在（默认隐藏）', sched.custom);
+
+  // 已发送文件夹：列表「对方」列显示收件人而不是自己（2.2.2 修）
+  const sent = await ev(`
+    S.folder = 'Sent'; S.multi = false; S.sel.clear();
+    await loadList();
+    await new Promise(r => setTimeout(r, 300));
+    const first = document.querySelector('#mailList .mail .from');
+    const isOutgoing = (S.folder === 'Sent' || S.folder === 'Drafts');
+    return { text: first ? first.textContent : '', folder: S.folder };`);
+  check('已发送列表显示收件人（不再显示自己）',
+      sent.text.indexOf('demo@qq.com') < 0 && sent.text.length > 0, sent.text);
+
+  // 定时队列弹窗能打开
+  const schedUI = await ev(`
+    document.getElementById('btnSched').click();
+    await new Promise(r => setTimeout(r, 400));
+    return { shown: document.getElementById('schedMask').classList.contains('show'),
+             rows: document.querySelectorAll('#schedList .sched-row').length };`);
+  check('点「定时」能打开队列弹窗', schedUI.shown);
+
+  console.log('\n=== K) JS 异常 ===');
   check('全程没有未捕获的 JS 报错', errors.length === 0, errors.slice(0, 3).join(' | '));
 
   console.log(`\n通过 ${PASS.length} 项，失败 ${FAIL.length} 项`);

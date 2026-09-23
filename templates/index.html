@@ -15,7 +15,7 @@
   <aside class="nav">
     <div class="brand">
       <div class="logo">✉</div>
-      <div>多邮箱客户端<small>统一收件箱 · v{{ version }} · <span id="verBuild">{{ build }}</span></small></div>
+      <div>星尘邮箱<small>统一收件箱 · v{{ version }} · <span id="verBuild">{{ build }}</span></small></div>
     </div>
 
     <button class="btn-add" id="btnAddAccount">＋ 添加邮箱账号</button>
@@ -88,6 +88,7 @@
         <div class="tools">
           <button class="tool" id="btnCompose">＋ 写邮件</button>
           <button class="tool" id="btnMarkRead" title="把当前账号所有文件夹的未读都标为已读（含垃圾邮件）">全部已读</button>
+          <button class="tool" id="btnSched" title="查看定时发送队列，可取消或立即发送">定时</button>
           <button class="tool" id="btnDeleteSel" title="进入多选，勾选后可批量删除"><span id="selBtnText">多选</span><span class="selcnt" id="selCnt"></span></button>
           <button class="tool" id="btnRefresh">刷新</button>
         </div>
@@ -248,7 +249,32 @@
     </div>
     <div class="foot">
       <button class="btn ghost" id="btnComposeCancel">取消</button>
+      <div class="send-when">
+        <select id="cWhen" title="选择发送时间">
+          <option value="0">立即发送</option>
+          <option value="300">5 分钟后发送</option>
+          <option value="900">15 分钟后发送</option>
+          <option value="3600">1 小时后发送</option>
+          <option value="tomorrow">明天上午 9 点</option>
+          <option value="custom">定时…</option>
+        </select>
+        <input type="datetime-local" id="cWhenAt" style="display:none;" title="选择具体发送时间">
+      </div>
       <button class="btn" id="btnSend">发送</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ 弹窗：定时发送队列 ══════════ -->
+<div class="mask" id="schedMask">
+  <div class="modal" style="max-width:660px;">
+    <h3>定时发送队列</h3>
+    <div class="body">
+      <div class="msg err" id="schedMsg" style="display:none;"></div>
+      <div id="schedList" class="sched-list"></div>
+    </div>
+    <div class="foot">
+      <button class="btn ghost" id="btnSchedClose">关闭</button>
     </div>
   </div>
 </div>
@@ -460,7 +486,7 @@
           <div class="about-box">
             <div class="ab-logo">✉</div>
             <div>
-              <div class="ab-title">多邮箱客户端 <small id="setVer">v{{ version }}</small></div>
+              <div class="ab-title">星尘邮箱 <small id="setVer">v{{ version }}</small></div>
               <div class="ab-line">界面构建 <span id="setBuild">{{ build }}</span></div>
               <div class="ab-line">作者 · 软件推手 <span class="ab-id">phantomxjc</span></div>
               <div class="ab-line">后续更新详情见微信公众号「软件推手」</div>

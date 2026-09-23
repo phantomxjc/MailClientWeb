@@ -14,8 +14,9 @@ from datetime import datetime, timezone
 from email.header import decode_header
 from email.utils import format_datetime, parsedate_to_datetime
 
-from db import (clear_attachments, emails_missing_date, existing_uids,
-                save_attachment, save_email, set_email_time)
+from db import (clear_attachments, existing_uids, emails_missing_date,
+                save_attachment, save_email, set_email_time, set_seen_by_uid,
+                uids_recent)
 from mail_conn import quote_mailbox
 
 # 只有这两个文件夹的新邮件值得提醒：别人发进来的。
@@ -144,9 +145,18 @@ def fetch_folder(account_id, conn, canonical, imap_name, limit=120):
     canonical 是入库用的统一 key（INBOX/Sent/Drafts/Trash/Spam），
     imap_name 是服务器上的真实文件夹名。
 
+    「不全」问题的根治（2.2.2）：早期版本每轮都只拉服务器上「最新 limit 封」，
+    邮件一多，历史邮件就永远进不来。现在改成**增量同步**：
+      · 首次同步（本地为空）：拉最新 limit 封打底（保证第一次别太慢）；
+      · 之后每轮：只拉「UID 比本地最大值大」的新邮件，**数量不设限** ——
+        出差一周攒了 300 封也能一口气全拉回来；
+      · 已入库的邮件不再重拉正文，只对最近 120 封轻量取一次 FLAGS，
+        跟服务器对齐已读状态（在手机上读了，这边也会变已读）。
+
     「新增」的判定方式：拉取前先取一次本地已有的 uid 集合，循环里不在集合内的
     就是这次新到的。两个坑要绕开：
-      1. 不能拿 uid 大小当新旧 —— 有的服务商 uid 并不严格递增；
+      1. 不能拿 uid 大小当新旧 —— 有的服务商 uid 并不严格递增（所以仍以
+         集合差为准，UID 范围只是用来缩小拉取窗口）；
       2. 首次同步整批都是新的（本地空库），但那不是「刚收到」，所以整批不提醒，
          否则第一次添加账号就会甩出上百条通知。
     """
@@ -165,51 +175,31 @@ def fetch_folder(account_id, conn, canonical, imap_name, limit=120):
         conn.select("INBOX", readonly=True)
         return 0, []
 
-    uids = data[0].split()[-int(limit):]
     known = existing_uids(account_id, canonical)
     first_sync = not known
+    all_uids = [int(u) for u in data[0].split()]
+
+    if first_sync:
+        # 首次：只拉最近 limit 封打底，历史邮件数量大时第一次不至于拖几分钟
+        uids = sorted(all_uids)[-int(limit):]
+    else:
+        # 增量：UID 比本地最大值大的都拉（新邮件不限量）。
+        # SEARCH 结果天然有序，直接过滤；uid 不严格递增的服务商上，
+        # 个别漏网的老邮件下一轮也会被 known 集合判重逻辑覆盖不到 ——
+        # 但这些服务商上 max_uid 只会偏大不会偏小，窗口安全。
+        max_known = max(known)
+        uids = [u for u in all_uids if u > max_known]
+
     new_items = []
     count = 0
     for uid in uids:
         try:
-            # 必须用 BODY.PEEK[]：`RFC822` 等价于 `BODY[]`，按 IMAP 规范会
-            # **顺带把服务端这封邮件标成已读**（用户会莫名发现邮件全变已读了）。
-            typ, msg_data = conn.uid("fetch", uid, "(BODY.PEEK[] FLAGS INTERNALDATE)")
-            if typ != "OK" or not msg_data:
+            info, seen, email_id = _fetch_and_save(account_id, conn, canonical, uid)
+            if email_id is None:
                 continue
-            raw, flags, internal = None, "", ""
-            for part in msg_data:
-                if isinstance(part, tuple):
-                    head = part[0].decode("utf-8", "ignore") if isinstance(part[0], bytes) else str(part[0])
-                    m = _FLAGS_RE.search(head)
-                    if m:
-                        flags = m.group(1)
-                    m = _INTERNALDATE_RE.search(head)
-                    if m:
-                        internal = m.group(1)
-                    raw = part[1]
-            if raw is None:
-                continue
-
-            msg = email.message_from_bytes(raw)
-            info = parse_message(msg)
-            if not (info.get("date") or "").strip():
-                # Date 头缺失（老版本自己发的信就是这样）→ 用服务器接收时间顶上
-                info["date"] = internaldate_to_header(internal)
-            seen = 1 if "\\seen" in flags.lower() else 0
-
-            email_id = save_email(
-                account_id, canonical, int(uid),
-                info["from_addr"], info["to_addr"], info["subject"], info["date"],
-                info["body_text"], info["body_html"], seen, info["has_attach"])
-
-            if info["attachments"]:
-                clear_attachments(email_id)
-                for fname, ctype, payload in info["attachments"]:
-                    save_attachment(email_id, fname, ctype, payload)
-
+            count += 1
             if (canonical in NOTIFY_FOLDERS and not first_sync
-                    and not seen and int(uid) not in known):
+                    and not seen and uid not in known):
                 new_items.append({
                     "subject": info["subject"],
                     "from": info["from_addr"],
@@ -217,16 +207,93 @@ def fetch_folder(account_id, conn, canonical, imap_name, limit=120):
                     "folder": canonical,
                     "email_id": email_id,
                 })
-            count += 1
         except Exception:
             # 单封邮件解析失败不该拖垮整个文件夹的同步
             continue
+
+    # 已入库邮件：只刷 FLAGS（已读状态），不重拉正文 —— 又快又不打扰服务器
+    if not first_sync:
+        try:
+            _refresh_flags(account_id, conn, canonical,
+                           uids_recent(account_id, canonical, 120))
+        except Exception:
+            pass
 
     try:
         conn.select("INBOX", readonly=True)
     except Exception:
         pass
     return count, new_items
+
+
+def _fetch_and_save(account_id, conn, canonical, uid):
+    """拉一封邮件并入库，返回 (解析结果, 是否已读, email_id)；失败抛异常。"""
+    # 必须用 BODY.PEEK[]：`RFC822` 等价于 `BODY[]`，按 IMAP 规范会
+    # **顺带把服务端这封邮件标成已读**（用户会莫名发现邮件全变已读了）。
+    typ, msg_data = conn.uid("fetch", str(uid), "(BODY.PEEK[] FLAGS INTERNALDATE)")
+    if typ != "OK" or not msg_data:
+        return None, 0, None
+    raw, flags, internal = None, "", ""
+    for part in msg_data:
+        if isinstance(part, tuple):
+            head = part[0].decode("utf-8", "ignore") if isinstance(part[0], bytes) else str(part[0])
+            m = _FLAGS_RE.search(head)
+            if m:
+                flags = m.group(1)
+            m = _INTERNALDATE_RE.search(head)
+            if m:
+                internal = m.group(1)
+            raw = part[1]
+    if raw is None:
+        return None, 0, None
+
+    msg = email.message_from_bytes(raw)
+    info = parse_message(msg)
+    if not (info.get("date") or "").strip():
+        # Date 头缺失（老版本自己发的信就是这样）→ 用服务器接收时间顶上
+        info["date"] = internaldate_to_header(internal)
+    seen = 1 if "\\seen" in flags.lower() else 0
+
+    email_id = save_email(
+        account_id, canonical, int(uid),
+        info["from_addr"], info["to_addr"], info["subject"], info["date"],
+        info["body_text"], info["body_html"], seen, info["has_attach"])
+
+    if info["attachments"]:
+        clear_attachments(email_id)
+        for fname, ctype, payload in info["attachments"]:
+            save_attachment(email_id, fname, ctype, payload)
+    return info, seen, email_id
+
+
+_FLAGS_BATCH = 100
+
+
+def _refresh_flags(account_id, conn, canonical, uid_list):
+    """轻量同步已读状态：只取 FLAGS，不动正文。
+
+    在手机/网页版上读过或标过未读的邮件，下一次同步时这边会跟上，
+    不再像老版本那样要重新下载整封正文才能更新状态。
+    """
+    for i in range(0, len(uid_list), _FLAGS_BATCH):
+        chunk = uid_list[i:i + _FLAGS_BATCH]
+        if not chunk:
+            continue
+        typ, data = conn.uid("fetch", ",".join(str(u) for u in chunk), "(FLAGS)")
+        if typ != "OK" or not data:
+            continue
+        for part in data:
+            blob = part if isinstance(part, bytes) else (
+                part[0] if isinstance(part, tuple) and isinstance(part[0], bytes) else b"")
+            if not blob:
+                continue
+            m = re.search(rb"UID\s+(\d+)", blob)
+            fm = _FLAGS_RE.search(blob.decode("utf-8", "ignore"))
+            if not (m and fm):
+                continue
+            uid = int(m.group(1))
+            seen = 1 if "\\seen" in fm.group(1).lower() else 0
+            set_seen_by_uid(account_id, canonical, uid, seen)
 
 
 def repair_missing_dates(account_id, conn, canonical, imap_name, limit=300):

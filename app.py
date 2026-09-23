@@ -11,6 +11,8 @@ import html
 import io
 import os
 import secrets
+import base64
+import json
 import threading
 import time
 
@@ -310,8 +312,10 @@ def api_emails():
     items = db.get_emails(account_id, folder, keyword,
                           limit=200, unread_only=unread_only)
     # 列表里也把发件人拆成「姓名 / 地址」，前端渲染更干净（不用显示尖括号那串）
+    # 收件人也拆：已发送/草稿文件夹的列表要显示「发给谁」，而不是显示自己
     for it in items:
         it["from_name"], it["from_addr"] = _split_from(it.get("msg_from") or "")
+        it["to_name"], it["to_addr"] = _split_from(it.get("msg_to") or "")
     return jsonify({
         "items": items,
         "folder": folder,
@@ -550,8 +554,13 @@ def _push_seen_bulk(rows, seen=True):
             pass
 
 
-def _append_to_sent(acc, raw):
-    """把已发送的邮件追加到服务端「已发送」（尽力而为）。"""
+def _append_to_sent(acc, raw, msgid=None):
+    """把已发送的邮件追加到服务端「已发送」（尽力而为）。
+
+    阿里企业邮等服务器会在 SMTP 发出后**自动**把信存进已发送；客户端再
+    APPEND 一封，已发送里就是两封一样的。用 Message-ID 查重：
+    服务器上已经有这封（按 Message-ID 搜得到）就不再追加。
+    """
     try:
         folders = db.get_folders(acc["id"])
         name = folders.get("Sent")
@@ -559,6 +568,15 @@ def _append_to_sent(acc, raw):
             return
         conn = connect(acc)
         try:
+            if msgid:
+                # SEARCH HEADER 的参数不能带尖括号里的换行，msgid 形如 <xxx@domain>
+                try:
+                    typ, data = conn.uid("search", None,
+                                         "HEADER", "Message-ID", msgid)
+                    if typ == "OK" and data and data[0].split():
+                        return                  # 服务器已自动保存，跳过
+                except Exception:
+                    pass                        # 查不了就按老办法追加
             conn.append(quote_mailbox(name), "\\Seen", None, raw)
         finally:
             try:
@@ -679,6 +697,102 @@ def api_sync_status():
 
 
 # ---------------------------------------------------------------- 发信
+def _do_send(acc, to_addr, subject, body, attachments=None, html=True,
+             cc=None, bcc=None):
+    """真正把一封信发出去：立即发送与定时到点发送共用这一条路。
+
+    返回 (收件人数, raw, msgid)。发送失败抛 SendError（带人话原因）。
+    """
+    raw, rcpt, msgid = send_email(
+        acc["smtp_server"], acc["smtp_port"], acc["email"], to_addr,
+        subject, body, attachments=attachments, html=html,
+        provider=acc["provider"], from_name=acc.get("name") or None,
+        cc=cc, bcc=bcc)
+    # 发出去的收件人自动进常用联系人（次数 +1，用于「常用」排序）
+    try:
+        db.touch_contacts(rcpt)
+    except Exception:
+        pass
+    threading.Thread(target=_append_to_sent, args=(acc, raw, msgid),
+                     daemon=True).start()
+    return len(rcpt), raw, msgid
+
+
+def _scheduled_worker():
+    """定时发送队列的后台线程：每 20 秒扫一次到点的任务。
+
+    状态机：pending → sending → sent / failed。进程重启不丢任务
+    （队列在 SQLite 里），启动后继续按计划发。
+    """
+    while True:
+        try:
+            for task_id in db.due_scheduled():
+                task = db.get_scheduled(task_id)
+                if not task or not task.get("account_id"):
+                    db.update_scheduled(task_id, status="failed",
+                                        error="发件账号不存在（可能已被删除）")
+                    continue
+                acc = db.get_account(task["account_id"])
+                db.update_scheduled(task_id, status="sending")
+                try:
+                    attachments = [
+                        {"filename": a.get("filename") or "attachment",
+                         "data": base64.b64decode(a.get("data") or "")}
+                        for a in json.loads(task.get("attachments") or "[]")]
+                    _do_send(acc, task["addr_to"], task["subject"],
+                             task["body"], attachments=attachments,
+                             html=bool(task["html"]), cc=task["addr_cc"] or None,
+                             bcc=task["addr_bcc"] or None)
+                    db.update_scheduled(task_id, status="sent",
+                                        sent_at=int(time.time()), error="")
+                except Exception as e:
+                    # 发送失败：标记 failed 留在队列里，用户可在定时列表里重发
+                    db.update_scheduled(task_id, status="failed",
+                                        error=str(e)[:400])
+        except Exception:
+            pass                                  # 队列扫描自身绝不能死
+        time.sleep(20)
+
+
+@app.route("/api/scheduled")
+def api_scheduled():
+    """定时发送队列（未完成的在前，按计划时间升序）。"""
+    return jsonify({"items": db.list_scheduled()})
+
+
+@app.route("/api/scheduled/<int:task_id>", methods=["DELETE"])
+def api_scheduled_cancel(task_id):
+    if db.delete_scheduled(task_id):
+        return jsonify({"ok": True})
+    return jsonify({"error": "任务不存在或已发送"}), 404
+
+
+@app.route("/api/scheduled/<int:task_id>/sendnow", methods=["POST"])
+def api_scheduled_sendnow(task_id):
+    """不等定时，立刻把排队的这封发出去。"""
+    task = db.get_scheduled(task_id)
+    if not task:
+        return jsonify({"error": "任务不存在"}), 404
+    if task["status"] == "sent":
+        return jsonify({"error": "这封已经发过了"}), 400
+    acc = db.get_account(task["account_id"]) if task.get("account_id") else None
+    if not acc:
+        return jsonify({"error": "发件账号不存在（可能已被删除）"}), 400
+    try:
+        attachments = [
+            {"filename": a.get("filename") or "attachment",
+             "data": base64.b64decode(a.get("data") or "")}
+            for a in json.loads(task.get("attachments") or "[]")]
+        _do_send(acc, task["addr_to"], task["subject"], task["body"],
+                 attachments=attachments, html=bool(task["html"]),
+                 cc=task["addr_cc"] or None, bcc=task["addr_bcc"] or None)
+    except Exception as e:
+        db.update_scheduled(task_id, status="failed", error=str(e)[:400])
+        return jsonify({"error": str(e)}), 400
+    db.update_scheduled(task_id, status="sent", sent_at=int(time.time()), error="")
+    return jsonify({"ok": True})
+
+
 @app.route("/api/send", methods=["POST"])
 def api_send():
     form = request.form
@@ -700,31 +814,36 @@ def api_send():
         if f and f.filename:
             attachments.append({"filename": f.filename, "data": f.read()})
 
+    # ── 定时/延时发送：前端传 send_at（unix 秒），在未来就先排队 ──
+    send_at_raw = (form.get("send_at") or "").strip()
+    if send_at_raw.isdigit():
+        send_at = int(send_at_raw)
+        if send_at > int(time.time()) + 15:       # 15 秒缓冲：太近的当立即发
+            att_json = json.dumps(
+                [{"filename": a["filename"],
+                  "data": base64.b64encode(a["data"]).decode("ascii")}
+                 for a in attachments], ensure_ascii=False)
+            task_id = db.add_scheduled(
+                acc["id"], to_addr, (form.get("cc") or "").strip(),
+                (form.get("bcc") or "").strip(),
+                (form.get("subject") or "").strip(), form.get("body") or "",
+                att_json, form.get("html", "1") == "1", send_at)
+            return jsonify({"ok": True, "scheduled": True, "id": task_id,
+                            "send_at": send_at})
+
     try:
-        raw, rcpt = send_email(
-            acc["smtp_server"], acc["smtp_port"], acc["email"], to_addr,
-            (form.get("subject") or "").strip(),
-            form.get("body") or "",
-            attachments=attachments,
-            html=(form.get("html", "1") == "1"),
-            provider=acc["provider"],
-            from_name=acc.get("name") or None,
-            cc=(form.get("cc") or "").strip() or None,
-            bcc=(form.get("bcc") or "").strip() or None)
+        n, _raw, _msgid = _do_send(acc, to_addr, (form.get("subject") or "").strip(),
+                                   form.get("body") or "", attachments=attachments,
+                                   html=(form.get("html", "1") == "1"),
+                                   cc=(form.get("cc") or "").strip() or None,
+                                   bcc=(form.get("bcc") or "").strip() or None)
     except SendError as e:
         return jsonify({"error": str(e)}), 400
     except Exception as e:
         # 兜底：别把 Python 原始异常糊到用户脸上
         return jsonify({"error": f"发送失败：{e}"}), 400
 
-    # 发出去的收件人自动进常用联系人（次数 +1，用于「常用」排序）
-    try:
-        db.touch_contacts(rcpt)
-    except Exception:
-        pass
-
-    threading.Thread(target=_append_to_sent, args=(acc, raw), daemon=True).start()
-    return jsonify({"ok": True, "contacts": len(rcpt)})
+    return jsonify({"ok": True, "contacts": n})
 
 
 # ---------------------------------------------------------------- 微软授权
@@ -774,6 +893,9 @@ def _start_background():
     if SYNC_INTERVAL_MINUTES > 0:
         threading.Thread(target=background_loop, args=(SYNC_INTERVAL_MINUTES,),
                          name="auto-sync", daemon=True).start()
+    # 定时发送队列：到点自动发，进程重启后按 SQLite 里的计划继续
+    threading.Thread(target=_scheduled_worker, name="scheduled-send",
+                     daemon=True).start()
 
 
 _start_background()

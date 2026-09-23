@@ -434,6 +434,29 @@ iframe.body { width: 100%; border: 0; display: block; height: 70vh; min-height: 
   max-width: 70vw;
 }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.toast.warn { background: #b45309; }
+.toast.err { background: #b91c1c; }
+
+/* ── 定时发送 ── */
+.send-when { display: flex; align-items: center; gap: 8px; margin-right: auto; }
+.send-when select, .send-when input[type="datetime-local"] {
+  padding: 8px 10px; border: 1px solid #dbe3ee; border-radius: 9px;
+  font-size: 13px; color: #1e293b; background: #fff;
+}
+.sched-list { display: flex; flex-direction: column; gap: 10px; max-height: 55vh; overflow: auto; }
+.sched-row {
+  display: flex; gap: 12px; align-items: flex-start; justify-content: space-between;
+  padding: 12px 14px; border: 1px solid #e6ebf3; border-radius: 12px; background: #fbfcfe;
+}
+.sched-row .s-main { min-width: 0; flex: 1; }
+.sched-row .s-top { display: flex; gap: 10px; align-items: center; font-size: 12px; margin-bottom: 3px; }
+.sched-row .s-when { color: #1d4ed8; font-weight: 600; }
+.sched-row .s-when.failed { color: #dc2626; }
+.sched-row .s-acc { color: #94a3b8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sched-row .s-subj { font-size: 14px; font-weight: 600; color: #1e293b; margin-bottom: 2px; }
+.sched-row .s-to { font-size: 12px; color: #64748b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sched-row .s-err { font-size: 12px; color: #dc2626; margin-top: 4px; }
+.sched-row .s-ops { display: flex; gap: 8px; flex-shrink: 0; }
 
 ::-webkit-scrollbar { width: 9px; height: 9px; }
 ::-webkit-scrollbar-thumb { background: #cfdaea; border-radius: 5px; }

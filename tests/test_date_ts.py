@@ -55,7 +55,7 @@ S.is_microsoft = lambda *a, **k: False
 S.get_password = lambda addr: "authcode123"
 
 print("=== 1) 发信报文 Date 头 ===")
-raw, rcpt = S.send_email(
+raw, rcpt, _msgid = S.send_email(
     smtp_server="smtp.qq.com", smtp_port=587, from_addr="me@qq.com",
     to_addr="you@qq.com", subject="标题", body="正文", html=True,
 )

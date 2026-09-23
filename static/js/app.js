@@ -33,9 +33,11 @@ async function api(url, opts) {
 }
 
 let toastTimer = null;
-function toast(text) {
+function toast(text, kind) {
   const el = $('toast');
   el.textContent = text;
+  el.classList.remove('warn', 'err');
+  if (kind) el.classList.add(kind);
   el.classList.add('show');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
@@ -810,13 +812,19 @@ async function loadList() {
     return;
   }
   const showAcc = S.account === 'all';
+  // 已发送/草稿里「对方」是收件人，不是自己 —— 显示发给谁（2.2.2 修：
+  // 之前这些文件夹也显示发件人，全是自己的邮箱地址，看起来像信息错了）
+  const outgoing = (S.folder === 'Sent' || S.folder === 'Drafts');
+  const other = (m) => outgoing
+    ? (m.to_name || m.to_addr || m.msg_to || '(未填写收件人)')
+    : (m.from_name || m.from_addr || m.msg_from || '(无发件人)');
   box.innerHTML = S.mails.map((m) => `
     <div class="mail ${m.seen ? '' : 'unread'} ${S.selected === m.id ? 'active' : ''} ${S.sel.has(m.id) ? 'sel' : ''}" data-id="${m.id}">
       <label class="mcheck" title="选择这封"><input type="checkbox" data-id="${m.id}" ${S.sel.has(m.id) ? 'checked' : ''}></label>
-      <div class="avatar">${esc(initials(m.from_name, m.from_addr || m.msg_from))}</div>
+      <div class="avatar">${esc(initials(outgoing ? (m.to_name || m.msg_to || '') : m.from_name, outgoing ? (m.to_addr || m.msg_to) : (m.from_addr || m.msg_from)))}</div>
       <div class="body">
         <div class="top">
-          <span class="from">${esc(m.from_name || m.from_addr || m.msg_from || '(无发件人)')}</span>
+          <span class="from">${esc(other(m))}</span>
           ${showAcc ? `<span class="tagacc">${esc(m.account_name)}</span>` : ''}
           ${m.has_attachment ? '<span class="clip">📎</span>' : ''}
           <span class="date">${esc(fmtListDate(m.date))}</span>
@@ -987,7 +995,12 @@ async function openMail(id) {
     await refreshCounts();
     loadList();
   };
-  $('btnReply').onclick = () => openCompose({ to: m.from_addr, subject: 'Re: ' + (m.subject || '') });
+  // 已发送/草稿里的「回复」应该回给当初的收件人，而不是自己（2.2.2 修）
+  const isOutgoing = m.folder === 'Sent' || m.folder === 'Drafts';
+  const replyTo = isOutgoing
+    ? (m.msg_to || m.to_addr || m.from_addr)
+    : (m.from_addr || m.msg_from);
+  $('btnReply').onclick = () => openCompose({ to: replyTo, subject: 'Re: ' + (m.subject || '') });
   $('btnDelete').onclick = async () => { await deleteOne(m.id, { fromDetail: true }); };
   $('btnSaveContact').onclick = async () => {
     const addr = m.from_addr || m.msg_from || '';
@@ -1269,6 +1282,32 @@ function openCompose(prefill) {
 $('btnCompose').onclick = () => openCompose();
 $('btnComposeCancel').onclick = () => $('composeMask').classList.remove('show');
 
+$('cWhen').onchange = () => {
+  $('cWhenAt').style.display = $('cWhen').value === 'custom' ? '' : 'none';
+};
+
+/* 把「发送时间」选择换算成 unix 秒；立即发送返回 0 */
+function scheduledAt() {
+  const v = $('cWhen').value;
+  if (v === '0' || v === '') return 0;
+  if (v === 'tomorrow') {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    d.setHours(9, 0, 0, 0);
+    return Math.floor(d.getTime() / 1000);
+  }
+  if (v === 'custom') {
+    const raw = $('cWhenAt').value;             // 2026-09-23T09:30
+    if (!raw) { toast('请选择具体的发送时间', 'warn'); return -1; }
+    const t = Math.floor(new Date(raw).getTime() / 1000);
+    if (!t || t <= Math.floor(Date.now() / 1000)) {
+      toast('定时时间必须晚于现在', 'warn'); return -1;
+    }
+    return t;
+  }
+  return Math.floor(Date.now() / 1000) + parseInt(v, 10);   // 300/900/3600
+}
+
 $('btnSend').onclick = async () => {
   const btn = $('btnSend');
   const fd = new FormData();
@@ -1280,21 +1319,97 @@ $('btnSend').onclick = async () => {
   fd.append('html', '1');
   for (const f of $('cFiles').files) fd.append('files', f);
 
-  btn.disabled = true; btn.textContent = '发送中…';
+  const at = scheduledAt();
+  if (at === -1) return;                        // 定制时间没填/不合法，提示已给
+  if (at) fd.append('send_at', String(at));
+
+  btn.disabled = true;
+  btn.textContent = at ? '排队中…' : '发送中…';
   try {
     const r = await fetch('/api/send', { method: 'POST', body: fd });
     const data = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(data.error || '发送失败');
     $('composeMask').classList.remove('show');
-    toast('已发送');
-    loadContacts();          // 收件人已自动进常用联系人，刷新左栏
-    setTimeout(syncNow, 1200);
+    if (data.scheduled) {
+      toast('已加入定时队列，到点自动发送（工具栏「定时」可查看/取消）');
+    } else {
+      toast('已发送');
+      loadContacts();          // 收件人已自动进常用联系人，刷新左栏
+      setTimeout(syncNow, 1200);
+    }
   } catch (e) {
     showMsg('composeMsg', e.message);
   } finally {
     btn.disabled = false; btn.textContent = '发送';
   }
 };
+
+/* ---------------------------------------------------------------- 定时发送队列 */
+function fmtWhen(ts) {
+  const d = new Date(ts * 1000);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+async function renderSched() {
+  const box = $('schedList');
+  box.innerHTML = '<div class="empty" style="padding:24px 0;">加载中…</div>';
+  try {
+    const r = await api('/api/scheduled');
+    const items = r.items || [];
+    if (!items.length) {
+      box.innerHTML = '<div class="empty" style="padding:24px 0;">没有排队的定时邮件。<br><span style="font-size:12px;">写邮件时在「发送」按钮旁选择延时即可。</span></div>';
+      return;
+    }
+    box.innerHTML = items.map((t) => `
+      <div class="sched-row" data-id="${t.id}">
+        <div class="s-main">
+          <div class="s-top">
+            <span class="s-when ${t.status === 'failed' ? 'failed' : ''}">${t.status === 'sent' ? '已发送' : t.status === 'failed' ? '发送失败' : '将于 ' + fmtWhen(t.send_at) + ' 发送'}</span>
+            <span class="s-acc">${esc(t.account_email || '')}</span>
+          </div>
+          <div class="s-subj">${esc(t.subject || '(无主题)')}</div>
+          <div class="s-to">收件人：${esc(t.addr_to || '')}${t.addr_cc ? ' · 抄送：' + esc(t.addr_cc) : ''}</div>
+          ${t.error ? `<div class="s-err">${esc(t.error)}</div>` : ''}
+        </div>
+        <div class="s-ops">
+          ${t.status === 'pending' ? `<button class="tool" data-act="now">立即发送</button>` : ''}
+          <button class="tool" data-act="cancel">取消</button>
+        </div>
+      </div>`).join('');
+    box.querySelectorAll('.sched-row').forEach((row) => {
+      row.querySelectorAll('button').forEach((b) => {
+        b.onclick = async () => {
+          const id = row.dataset.id;
+          b.disabled = true;
+          try {
+            if (b.dataset.act === 'cancel') {
+              await api('/api/scheduled/' + id, { method: 'DELETE' });
+              toast('已取消该定时邮件');
+            } else {
+              await api('/api/scheduled/' + id + '/sendnow', { method: 'POST' });
+              toast('已发送');
+              setTimeout(syncNow, 1200);
+            }
+          } catch (e) {
+            toast(e.message || '操作失败', 'err');
+          }
+          renderSched();
+        };
+      });
+    });
+  } catch (e) {
+    box.innerHTML = `<div class="empty" style="padding:24px 0;">${esc(e.message || '加载失败')}</div>`;
+  }
+}
+
+function openSched() {
+  $('schedMsg').style.display = 'none';
+  $('schedMask').classList.add('show');
+  renderSched();
+}
+$('btnSched').onclick = openSched;
+$('btnSchedClose').onclick = () => $('schedMask').classList.remove('show');
 
 /* ---------------------------------------------------------------- 启动 */
 (async function start() {
@@ -1311,6 +1426,7 @@ $('btnSend').onclick = async () => {
     const cf = /^#confirm=(\d+)$/.exec(location.hash || '');
     if (cf) openConfirm(parseInt(cf[1], 10));
     if ((location.hash || '') === '#add') openAddAccount();
+    if ((location.hash || '') === '#sched') openSched();   // 定时发送队列深链
     // 调试/截图/分享用：设置弹窗的深链（#settings 通用 / #notify 提醒 / #pwd 账号安全 / #about 关于）
     const tab = ({ '#settings': 'general', '#notify': 'notify',
                    '#pwd': 'pwd', '#about': 'about' })[location.hash || ''];

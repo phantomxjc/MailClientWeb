@@ -6,6 +6,7 @@
 """
 import sqlite3
 import threading
+import time
 from email.utils import parsedate_to_datetime
 
 from config import DB_PATH, SYNC_INTERVAL_MINUTES
@@ -106,8 +107,28 @@ def init_db():
             last_login TEXT
         );
 
+        -- 定时/延时发送队列：写信时选了「定时发送」先落库，
+        -- 后台线程扫到点就发。重启不丢（状态机 pending → sending → sent/failed）。
+        CREATE TABLE IF NOT EXISTS scheduled (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id INTEGER,
+            addr_to TEXT,
+            addr_cc TEXT,
+            addr_bcc TEXT,
+            subject TEXT,
+            body TEXT,
+            attachments TEXT,              -- JSON: [{"filename":..,"data":base64}]
+            html INTEGER DEFAULT 1,
+            send_at INTEGER,               -- 计划发送时间（unix 秒）
+            status TEXT DEFAULT 'pending', -- pending / sending / sent / failed
+            error TEXT,
+            created_at INTEGER,
+            sent_at INTEGER
+        );
+
         CREATE INDEX IF NOT EXISTS idx_emails_box ON emails(account_id, folder, ts);
         CREATE INDEX IF NOT EXISTS idx_attach_email ON attachments(email_id);
+        CREATE INDEX IF NOT EXISTS idx_sched_due ON scheduled(status, send_at);
     """)
     _migrate(cur)
     conn.commit()
@@ -792,3 +813,106 @@ def delete_contact(contact_id):
     cur = conn.execute("DELETE FROM contacts WHERE id=?", (contact_id,))
     conn.commit()
     return cur.rowcount
+
+
+# ---------------------------------------------------------------- 定时发送队列
+def add_scheduled(account_id, addr_to, addr_cc, addr_bcc, subject, body,
+                  attachments_json, html, send_at):
+    """把一封定时邮件排进队列，返回任务 id。"""
+    conn = get_conn()
+    cur = conn.execute(
+        "INSERT INTO scheduled (account_id, addr_to, addr_cc, addr_bcc, subject,"
+        " body, attachments, html, send_at, status, created_at)"
+        " VALUES (?,?,?,?,?,?,?,?,?,'pending',?)",
+        (account_id, addr_to, addr_cc or "", addr_bcc or "", subject or "",
+         body or "", attachments_json or "[]", 1 if html else 0,
+         int(send_at), int(time.time())))
+    conn.commit()
+    return cur.lastrowid
+
+
+def list_scheduled(include_done=False, limit=100):
+    """待发送队列（按计划时间升序）。include_done=True 时带上已发/失败的尾巴。"""
+    conn = get_conn()
+    sql = ("SELECT s.*, a.email AS account_email, a.name AS account_name"
+           " FROM scheduled s LEFT JOIN accounts a ON s.account_id=a.id")
+    if not include_done:
+        sql += " WHERE s.status IN ('pending','sending')"
+    sql += " ORDER BY s.send_at ASC LIMIT ?"
+    rows = conn.execute(sql, (int(limit),)).fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        d.pop("body", None)                       # 列表不带正文
+        d.pop("attachments", None)
+        out.append(d)
+    return out
+
+
+def get_scheduled(task_id):
+    """取单条定时任务（含正文与附件，发送时用）。"""
+    row = get_conn().execute(
+        "SELECT s.*, a.email AS account_email, a.smtp_server, a.smtp_port,"
+        " a.provider, a.name AS account_name"
+        " FROM scheduled s LEFT JOIN accounts a ON s.account_id=a.id"
+        " WHERE s.id=?", (int(task_id),)).fetchone()
+    return dict(row) if row else None
+
+
+def due_scheduled(now=None, limit=10):
+    """到点该发的任务（pending 且 send_at<=now）。"""
+    now = int(now or time.time())
+    rows = get_conn().execute(
+        "SELECT id FROM scheduled WHERE status='pending' AND send_at<=?"
+        " ORDER BY send_at ASC LIMIT ?", (now, int(limit))).fetchall()
+    return [r["id"] for r in rows]
+
+
+def update_scheduled(task_id, **fields):
+    """更新任务字段（status / error / sent_at 等）。"""
+    allowed = {"status", "error", "sent_at", "send_at"}
+    sets, params = [], []
+    for k, v in fields.items():
+        if k in allowed:
+            sets.append(f"{k}=?")
+            params.append(v)
+    if not sets:
+        return
+    params.append(int(task_id))
+    conn = get_conn()
+    conn.execute(f"UPDATE scheduled SET {', '.join(sets)} WHERE id=?", params)
+    conn.commit()
+
+
+def delete_scheduled(task_id):
+    """取消/删除一条定时任务，返回是否真的删了。"""
+    conn = get_conn()
+    cur = conn.execute("DELETE FROM scheduled WHERE id=?", (int(task_id),))
+    conn.commit()
+    return cur.rowcount > 0
+
+
+# ---------------------------------------------------------------- 同步辅助
+def max_uid(account_id, folder):
+    """本地该文件夹已有的最大 UID（没有则 0）。增量同步的起点。"""
+    row = get_conn().execute(
+        "SELECT MAX(uid) AS m FROM emails WHERE account_id=? AND folder=?",
+        (int(account_id), folder)).fetchone()
+    return int(row["m"] or 0)
+
+
+def uids_recent(account_id, folder, limit=120):
+    """本地该文件夹最近 limit 个 UID（新→旧），用于轻量刷新已读状态。"""
+    rows = get_conn().execute(
+        "SELECT uid FROM emails WHERE account_id=? AND folder=?"
+        " ORDER BY uid DESC LIMIT ?", (int(account_id), folder, int(limit))).fetchall()
+    return [int(r["uid"]) for r in rows]
+
+
+def set_seen_by_uid(account_id, folder, uid, seen):
+    """按 UID 更新已读状态（增量同步时跟服务器对齐用）。"""
+    conn = get_conn()
+    conn.execute(
+        "UPDATE emails SET seen=? WHERE account_id=? AND folder=? AND uid=?",
+        (1 if seen else 0, int(account_id), folder, int(uid)))
+    conn.commit()

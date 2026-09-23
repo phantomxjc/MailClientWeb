@@ -33,7 +33,7 @@ function getJSON(url) {
   const chrome = spawn(CHROME, [
     '--headless=new', `--remote-debugging-port=${PORT}`, '--no-proxy-server',
     '--no-first-run', '--no-default-browser-check', '--disable-gpu',
-    '--window-size=1440,900', '--hide-scrollbars', 'about:blank',
+    '--window-size=1440,1100', '--hide-scrollbars', 'about:blank',
   ], { stdio: 'ignore' });
 
   let tabs = null;
